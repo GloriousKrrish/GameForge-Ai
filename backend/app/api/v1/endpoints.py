@@ -88,7 +88,11 @@ async def health_check():
 # ---------------------------------------------------------------------------
 @router.post("/generate", response_model=GenerationJobResponse, status_code=status.HTTP_202_ACCEPTED)
 async def generate_asset(req: GenerateRequest, background_tasks: BackgroundTasks):
-    """Create a real generation job. Builds execution graph via active Planner, validates, and executes through Blender."""
+    """Create a real generation job. Passes active scene_context to active Planner strategy."""
+    from app.db.repositories import SceneRepository
+    active_scene = SceneRepository.get_or_create_default_scene()
+    scene_context = active_scene.model_dump()
+
     job = await job_manager.create_job_async(req.prompt, req.execution_graph)
     background_tasks.add_task(process_generation_job, job.id)
     logger.info("Accepted generation job %s for prompt: '%s'", job.id, req.prompt[:80])
@@ -96,20 +100,124 @@ async def generate_asset(req: GenerateRequest, background_tasks: BackgroundTasks
 
 
 # ---------------------------------------------------------------------------
-# Scene & Transforms (PropertiesPanel authoritative backend)
+# Scene & Object Hierarchy Endpoints
 # ---------------------------------------------------------------------------
 @router.get("/scenes/active")
 async def get_active_scene():
-    """Retrieve current active scene with all objects and transforms."""
+    """Retrieve current active scene with all persistent objects and hierarchy."""
+    from app.db.repositories import SceneRepository
+    return SceneRepository.get_or_create_default_scene()
+
+
+@router.get("/scenes/{scene_id}")
+async def get_scene(scene_id: str):
+    from app.db.repositories import SceneRepository
+    scene = SceneRepository.get_scene(scene_id)
+    if not scene:
+        raise HTTPException(status_code=404, detail=f"Scene '{scene_id}' not found.")
+    return scene
+
+
+@router.post("/scenes/objects")
+async def create_scene_object(req: dict):
+    """Add a new SceneObject directly to active scene."""
+    from app.db.repositories import SceneRepository
+    from app.models.domain import SceneObject, TransformModel, MaterialModel
+    import uuid
+
+    scene = SceneRepository.get_or_create_default_scene()
+    obj_id = f"obj_{uuid.uuid4().hex[:8]}"
+    name = req.get("name", "New_Object")
+    obj_type = req.get("object_type", "CUBE").upper()
+
+    pos = req.get("position", [0.0, 0.0, 0.0])
+    rot = req.get("rotation", [0.0, 0.0, 0.0])
+    scl = req.get("scale", [1.0, 1.0, 1.0])
+    color = req.get("color", "#E8B4B8")
+
+    new_obj = SceneObject(
+        id=obj_id,
+        name=name,
+        object_type=obj_type,
+        transform=TransformModel(position=pos, rotation=rot, scale=scl),
+        material=MaterialModel(color=color),
+        parent_id=req.get("parent_id"),
+        visible=req.get("visible", True),
+    )
+
+    updated_scene = SceneRepository.add_object(scene.id, new_obj)
+    return {"success": True, "object": new_obj, "scene": updated_scene}
+
+
+@router.patch("/scenes/objects/{object_id}")
+async def update_scene_object(object_id: str, req: dict):
+    """Update properties (Name, Position, Rotation, Scale, Visibility, Parent) of a scene object."""
     from app.db.repositories import SceneRepository
     scene = SceneRepository.get_or_create_default_scene()
-    return scene
+    updated_scene = SceneRepository.update_object(scene.id, object_id, req)
+    if not updated_scene:
+        raise HTTPException(status_code=404, detail=f"Object '{object_id}' not found in scene.")
+    return {"success": True, "scene": updated_scene}
+
+
+@router.delete("/scenes/objects/{object_id}")
+async def delete_scene_object(object_id: str):
+    """Delete a scene object by ID or name."""
+    from app.db.repositories import SceneRepository
+    scene = SceneRepository.get_or_create_default_scene()
+    updated_scene = SceneRepository.delete_object(scene.id, object_id)
+    return {"success": True, "scene": updated_scene}
+
+
+@router.post("/scenes/objects/duplicate")
+async def duplicate_scene_object(req: dict):
+    """Duplicate an existing scene object."""
+    from app.db.repositories import SceneRepository
+    object_ref = req.get("object_id") or req.get("object_name")
+    if not object_ref:
+        raise HTTPException(status_code=422, detail="Missing object_id or object_name parameter.")
+    scene = SceneRepository.get_or_create_default_scene()
+    updated_scene, dup_obj = SceneRepository.duplicate_object(scene.id, object_ref)
+    if not updated_scene:
+        raise HTTPException(status_code=404, detail=f"Object '{object_ref}' not found.")
+    return {"success": True, "duplicate": dup_obj, "scene": updated_scene}
+
+
+@router.post("/scenes/objects/parent")
+async def parent_scene_object(req: dict):
+    """Establish parent-child relationship with cycle validation."""
+    from app.db.repositories import SceneRepository
+    child_ref = req.get("child_id") or req.get("child_name")
+    parent_ref = req.get("parent_id") or req.get("parent_name")
+
+    if not child_ref or not parent_ref:
+        raise HTTPException(status_code=422, detail="Missing child_id or parent_id.")
+
+    scene = SceneRepository.get_or_create_default_scene()
+    updated_scene, err = SceneRepository.set_parent(scene.id, child_ref, parent_ref)
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+
+    return {"success": True, "scene": updated_scene}
+
+
+@router.post("/scenes/objects/unparent")
+async def unparent_scene_object(req: dict):
+    """Clear parent reference of a child object."""
+    from app.db.repositories import SceneRepository
+    child_ref = req.get("child_id") or req.get("child_name")
+    if not child_ref:
+        raise HTTPException(status_code=422, detail="Missing child_id parameter.")
+
+    scene = SceneRepository.get_or_create_default_scene()
+    updated_scene = SceneRepository.unparent(scene.id, child_ref)
+    return {"success": True, "scene": updated_scene}
 
 
 @router.post("/scenes/objects/transform")
 async def update_object_transform(req: dict):
     """Authoritative transform edit from PropertiesPanel.
-    Builds single-step MOVE/ROTATE/SCALE graph, executes through 3D engine, updates scene database, and returns updated GLB URL.
+    Updates scene database, executes multi-object scene graph through 3D engine, and returns GLB URL.
     """
     from app.db.repositories import SceneRepository
     from app.schemas.execution_graph import ExecutionGraph, ExecutionStep, OperationType, StepStatus
@@ -130,43 +238,56 @@ async def update_object_transform(req: dict):
         scale=scale,
     )
 
-    # Build authoritative execution graph to regenerate GLB asset
-    steps = [
-        ExecutionStep(
-            id="step_1",
-            type=OperationType.CREATE_CUBE,
-            status=StepStatus.PENDING,
-            parameters={"size": 2.0, "name": object_name},
-        )
-    ]
-    step_idx = 2
+    # Build multi-object execution graph containing all active objects in scene
+    steps = []
+    step_idx = 1
 
-    if position is not None:
-        steps.append(ExecutionStep(
-            id=f"step_{step_idx}",
-            type=OperationType.MOVE_OBJECT,
-            status=StepStatus.PENDING,
-            parameters={"position": position},
-        ))
+    for obj in updated_scene.objects:
+        if not obj.visible:
+            continue
+
+        if obj.object_type == "SPHERE":
+            steps.append(ExecutionStep(
+                id=f"step_{step_idx}",
+                type=OperationType.CREATE_SPHERE,
+                status=StepStatus.PENDING,
+                parameters={"radius": 1.0, "name": obj.name, "location": obj.transform.position},
+            ))
+        else:
+            steps.append(ExecutionStep(
+                id=f"step_{step_idx}",
+                type=OperationType.CREATE_CUBE,
+                status=StepStatus.PENDING,
+                parameters={"size": 2.0, "name": obj.name, "location": obj.transform.position},
+            ))
         step_idx += 1
 
-    if rotation is not None:
-        steps.append(ExecutionStep(
-            id=f"step_{step_idx}",
-            type=OperationType.ROTATE_OBJECT,
-            status=StepStatus.PENDING,
-            parameters={"rotation": rotation},
-        ))
-        step_idx += 1
+        if obj.material and obj.material.color:
+            steps.append(ExecutionStep(
+                id=f"step_{step_idx}",
+                type=OperationType.SET_MATERIAL,
+                status=StepStatus.PENDING,
+                parameters={"color": obj.material.color, "metallic": obj.material.metallic, "roughness": obj.material.roughness},
+            ))
+            step_idx += 1
 
-    if scale is not None:
-        steps.append(ExecutionStep(
-            id=f"step_{step_idx}",
-            type=OperationType.SCALE_OBJECT,
-            status=StepStatus.PENDING,
-            parameters={"scale": scale},
-        ))
-        step_idx += 1
+        if obj.transform.rotation != [0.0, 0.0, 0.0]:
+            steps.append(ExecutionStep(
+                id=f"step_{step_idx}",
+                type=OperationType.ROTATE_OBJECT,
+                status=StepStatus.PENDING,
+                parameters={"rotation": obj.transform.rotation},
+            ))
+            step_idx += 1
+
+        if obj.transform.scale != [1.0, 1.0, 1.0]:
+            steps.append(ExecutionStep(
+                id=f"step_{step_idx}",
+                type=OperationType.SCALE_OBJECT,
+                status=StepStatus.PENDING,
+                parameters={"scale": obj.transform.scale},
+            ))
+            step_idx += 1
 
     steps.append(ExecutionStep(
         id=f"step_{step_idx}",

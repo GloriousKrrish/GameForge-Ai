@@ -1,31 +1,105 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useGameForgeStore } from "@/store/useGameForgeStore";
-import { updateObjectTransform } from "@/api/scene";
+import { updateObjectTransform, updateSceneObject, parentSceneObject, unparentSceneObject } from "@/api/scene";
 
 export function PropertiesPanel() {
-  const { selectedObject, setSelectedObject, setActiveAssetUrl, setErrorMessage } = useGameForgeStore();
+  const {
+    selectedObjectId,
+    sceneObjects,
+    setSceneObjects,
+    selectedObject,
+    setSelectedObject,
+    setActiveAssetUrl,
+    setErrorMessage,
+  } = useGameForgeStore();
+
   const [isUpdating, setIsUpdating] = useState(false);
+  const [objectName, setObjectName] = useState(selectedObject?.name || "GameForge_Cube");
+
+  const currentObj = sceneObjects.find((o) => o.id === selectedObjectId) || sceneObjects[0];
+
+  useEffect(() => {
+    if (currentObj) {
+      setObjectName(currentObj.name);
+    }
+  }, [currentObj]);
+
+  const handleNameBlur = async () => {
+    if (!currentObj || objectName === currentObj.name) return;
+    setIsUpdating(true);
+    try {
+      const res = await updateSceneObject(currentObj.id, { name: objectName });
+      if (res.success && res.scene) {
+        const mapped = res.scene.objects.map((o) => ({
+          id: o.id,
+          name: o.name,
+          type: o.object_type,
+          position: o.transform.position,
+          rotation: o.transform.rotation,
+          scale: o.transform.scale,
+          parent_id: o.parent_id,
+          visible: o.visible ?? true,
+        }));
+        setSceneObjects(mapped);
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || "Failed to rename object.");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleParentChange = async (newParentId: string) => {
+    if (!currentObj) return;
+    setIsUpdating(true);
+    try {
+      let res;
+      if (newParentId === "none") {
+        res = await unparentSceneObject(currentObj.id);
+      } else {
+        res = await parentSceneObject(currentObj.id, newParentId);
+      }
+      if (res.success && res.scene) {
+        const mapped = res.scene.objects.map((o) => ({
+          id: o.id,
+          name: o.name,
+          type: o.object_type,
+          position: o.transform.position,
+          rotation: o.transform.rotation,
+          scale: o.transform.scale,
+          parent_id: o.parent_id,
+          visible: o.visible ?? true,
+        }));
+        setSceneObjects(mapped);
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || "Failed to update parent relationship.");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   const handleTransformChange = async (
     type: "position" | "rotation" | "scale",
     axisIndex: number,
     value: number
   ) => {
-    if (!selectedObject) return;
+    if (!selectedObject && !currentObj) return;
 
-    const currentValues = [...selectedObject[type]] as [number, number, number];
+    const currentValues = [...((selectedObject && selectedObject[type]) || (currentObj && currentObj[type]) || [0,0,0])] as [number, number, number];
     currentValues[axisIndex] = value;
 
     const updatedObj = {
-      ...selectedObject,
-      [type]: currentValues,
+      name: objectName,
+      position: type === "position" ? currentValues : currentObj?.position || [0,0,0],
+      rotation: type === "rotation" ? currentValues : currentObj?.rotation || [0,0,0],
+      scale: type === "scale" ? currentValues : currentObj?.scale || [1,1,1],
     };
     setSelectedObject(updatedObj);
 
-    // Call real backend execution
     setIsUpdating(true);
     try {
-      const res = await updateObjectTransform(selectedObject.name, {
+      const res = await updateObjectTransform(currentObj?.name || objectName, {
         [type]: currentValues,
       });
       if (res.success && res.glb_url) {
@@ -43,14 +117,42 @@ export function PropertiesPanel() {
 
   return (
     <aside className="flex w-72 shrink-0 flex-col gap-6 overflow-y-auto border-l border-border bg-panel/60 p-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="font-serif text-lg text-foreground">Properties</h3>
-          <p className="text-xs font-mono text-gold-soft">{selectedObject?.name || "GameForge_Cube"}</p>
+      <div className="flex items-center justify-between border-b border-border pb-3">
+        <div className="w-full">
+          <h3 className="font-serif text-lg text-foreground mb-1">Properties</h3>
+          <input
+            type="text"
+            value={objectName}
+            onChange={(e) => setObjectName(e.target.value)}
+            onBlur={handleNameBlur}
+            onKeyDown={(e) => e.key === "Enter" && handleNameBlur()}
+            className="w-full rounded border border-border bg-secondary/80 px-2 py-1 text-xs font-mono text-gold focus:border-gold focus:outline-none"
+            placeholder="Object Name"
+          />
         </div>
-        {isUpdating && <span className="text-[10px] text-amber-400 animate-pulse">Syncing...</span>}
+        {isUpdating && <span className="ml-2 text-[10px] text-amber-400 animate-pulse shrink-0">Syncing...</span>}
       </div>
 
+      {/* Parent Hierarchy Selection */}
+      <section className="space-y-2">
+        <p className="text-[10px] uppercase tracking-[0.2em] text-gold-soft">Hierarchy Parent</p>
+        <select
+          value={currentObj?.parent_id || "none"}
+          onChange={(e) => handleParentChange(e.target.value)}
+          className="w-full rounded border border-border bg-secondary/80 px-2 py-1.5 text-xs text-foreground focus:border-gold focus:outline-none"
+        >
+          <option value="none">None (Root Level)</option>
+          {sceneObjects
+            .filter((o) => o.id !== currentObj?.id)
+            .map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name} ({o.type})
+              </option>
+            ))}
+        </select>
+      </section>
+
+      {/* Transform */}
       <section className="space-y-3">
         <p className="text-[10px] uppercase tracking-[0.2em] text-gold-soft">Transform (Authoritative)</p>
 
@@ -64,7 +166,7 @@ export function PropertiesPanel() {
                 <input
                   type="number"
                   step="0.5"
-                  value={selectedObject?.position[i] ?? 0}
+                  value={currentObj?.position[i] ?? 0}
                   onChange={(e) => handleTransformChange("position", i, parseFloat(e.target.value) || 0)}
                   className="w-full bg-transparent text-xs text-foreground focus:outline-none"
                 />
@@ -83,7 +185,7 @@ export function PropertiesPanel() {
                 <input
                   type="number"
                   step="15"
-                  value={selectedObject?.rotation[i] ?? 0}
+                  value={currentObj?.rotation[i] ?? 0}
                   onChange={(e) => handleTransformChange("rotation", i, parseFloat(e.target.value) || 0)}
                   className="w-full bg-transparent text-xs text-foreground focus:outline-none"
                 />
@@ -102,7 +204,7 @@ export function PropertiesPanel() {
                 <input
                   type="number"
                   step="0.2"
-                  value={selectedObject?.scale[i] ?? 1}
+                  value={currentObj?.scale[i] ?? 1}
                   onChange={(e) => handleTransformChange("scale", i, parseFloat(e.target.value) || 1)}
                   className="w-full bg-transparent text-xs text-foreground focus:outline-none"
                 />

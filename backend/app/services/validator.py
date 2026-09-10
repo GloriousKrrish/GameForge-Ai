@@ -116,8 +116,22 @@ class ExecutionGraphValidator:
 
         elif op == OperationType.PARENT_OBJECT:
             parent = params.get("parent")
+            child = params.get("child") or params.get("target")
             if parent is not None and not isinstance(parent, str):
-                return f"Invalid parent reference at step '{step_id}'. Must be an object name string."
+                return f"Invalid parent reference at step '{step_id}'. Must be an object reference string."
+            if parent and child and parent == child:
+                return f"Self-parenting rejected at step '{step_id}': Object '{parent}' cannot parent to itself."
+
+        elif op == OperationType.UNPARENT_OBJECT:
+            pass
+
+        elif op == OperationType.RENAME_OBJECT:
+            new_name = params.get("new_name")
+            if not new_name or not isinstance(new_name, str) or len(new_name.strip()) == 0:
+                return f"Invalid new_name at step '{step_id}'. Must be a non-empty string."
+
+        elif op in (OperationType.HIDE_OBJECT, OperationType.SHOW_OBJECT):
+            pass
 
         elif op == OperationType.DELETE_OBJECT:
             # target_name is optional; if omitted, deletes the active object

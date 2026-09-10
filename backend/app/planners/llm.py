@@ -35,7 +35,11 @@ ALLOWED OPERATION TYPES:
 - SCALE_OBJECT: parameters {"scale": [x,y,z]}
 - SET_MATERIAL: parameters {"color": "#HEX", "metallic": float(0-1), "roughness": float(0-1)}
 - DUPLICATE_OBJECT: parameters {"offset": [x,y,z]}
-- PARENT_OBJECT: parameters {"parent": string}
+- PARENT_OBJECT: parameters {"parent": string, "child": string}
+- UNPARENT_OBJECT: parameters {"target": string}
+- RENAME_OBJECT: parameters {"new_name": string}
+- HIDE_OBJECT: parameters {"target_name": string}
+- SHOW_OBJECT: parameters {"target_name": string}
 - EXPORT_GLB: parameters {} (MUST BE THE FINAL STEP)
 
 CRITICAL RULES:

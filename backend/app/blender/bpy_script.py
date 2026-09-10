@@ -177,6 +177,33 @@ def execute_graph(payload_json: str):
                 active_obj.parent = parent_obj
                 log(f"  Parented '{active_obj.name}' to '{parent_name}'")
 
+        # ---- UNPARENT_OBJECT ----
+        elif op_type == "UNPARENT_OBJECT":
+            if active_obj and active_obj.parent:
+                log(f"  Unparented '{active_obj.name}' from '{active_obj.parent.name}'")
+                active_obj.parent = None
+
+        # ---- RENAME_OBJECT ----
+        elif op_type == "RENAME_OBJECT":
+            new_name = params.get("new_name")
+            if active_obj and new_name:
+                log(f"  Renamed '{active_obj.name}' to '{new_name}'")
+                active_obj.name = new_name
+
+        # ---- HIDE_OBJECT ----
+        elif op_type == "HIDE_OBJECT":
+            if active_obj:
+                active_obj.hide_viewport = True
+                active_obj.hide_render = True
+                log(f"  Hid object '{active_obj.name}'")
+
+        # ---- SHOW_OBJECT ----
+        elif op_type == "SHOW_OBJECT":
+            if active_obj:
+                active_obj.hide_viewport = False
+                active_obj.hide_render = False
+                log(f"  Showed object '{active_obj.name}'")
+
         # ---- EXPORT_GLB ----
         elif op_type == "EXPORT_GLB":
             # Add default lighting and camera for scene completeness

@@ -21,43 +21,54 @@ class DeterministicPlanner(BasePlanner):
         steps: List[ExecutionStep] = []
         step_idx = 1
 
-        # 1. Base shape
-        if "sphere" in p_lower or "ball" in p_lower:
-            radius = 2.0 if ("large" in p_lower or "big" in p_lower) else (0.5 if "small" in p_lower else 1.0)
-            steps.append(ExecutionStep(
-                id=f"step_{step_idx}",
-                type=OperationType.CREATE_SPHERE,
-                status=StepStatus.PENDING,
-                parameters={"radius": radius, "name": "GameForge_Sphere"}
-            ))
-            step_idx += 1
-        elif "camera" in p_lower:
-            steps.append(ExecutionStep(
-                id=f"step_{step_idx}",
-                type=OperationType.CREATE_CAMERA,
-                status=StepStatus.PENDING,
-                parameters={"location": [4, -4, 3], "fov": 50.0, "name": "GameForge_Camera"}
-            ))
-            step_idx += 1
-        elif "light" in p_lower:
-            l_type = "SUN" if "sun" in p_lower else ("SPOT" if "spot" in p_lower else "POINT")
-            steps.append(ExecutionStep(
-                id=f"step_{step_idx}",
-                type=OperationType.CREATE_LIGHT,
-                status=StepStatus.PENDING,
-                parameters={"light_type": l_type, "energy": 1000.0, "location": [5, 5, 10]}
-            ))
-            step_idx += 1
-        else:
-            # Default to cube
-            size = 4.0 if ("large" in p_lower or "big" in p_lower) else (1.0 if "small" in p_lower else 2.0)
-            steps.append(ExecutionStep(
-                id=f"step_{step_idx}",
-                type=OperationType.CREATE_CUBE,
-                status=StepStatus.PENDING,
-                parameters={"size": size, "name": "GameForge_Cube"}
-            ))
-            step_idx += 1
+        # Check scene_context for existing objects
+        existing_objects = scene_context.get("objects", []) if scene_context else []
+        target_obj = None
+
+        for obj in existing_objects:
+            obj_name = obj.get("name", "").lower()
+            obj_type = obj.get("object_type", "").lower()
+            if (obj_name and obj_name in p_lower) or (obj_type and obj_type in p_lower):
+                target_obj = obj
+                break
+
+        # 1. Base shape or target existing object
+        if not target_obj:
+            if "sphere" in p_lower or "ball" in p_lower:
+                radius = 2.0 if ("large" in p_lower or "big" in p_lower) else (0.5 if "small" in p_lower else 1.0)
+                steps.append(ExecutionStep(
+                    id=f"step_{step_idx}",
+                    type=OperationType.CREATE_SPHERE,
+                    status=StepStatus.PENDING,
+                    parameters={"radius": radius, "name": "GameForge_Sphere"}
+                ))
+                step_idx += 1
+            elif "camera" in p_lower:
+                steps.append(ExecutionStep(
+                    id=f"step_{step_idx}",
+                    type=OperationType.CREATE_CAMERA,
+                    status=StepStatus.PENDING,
+                    parameters={"location": [4, -4, 3], "fov": 50.0, "name": "GameForge_Camera"}
+                ))
+                step_idx += 1
+            elif "light" in p_lower:
+                l_type = "SUN" if "sun" in p_lower else ("SPOT" if "spot" in p_lower else "POINT")
+                steps.append(ExecutionStep(
+                    id=f"step_{step_idx}",
+                    type=OperationType.CREATE_LIGHT,
+                    status=StepStatus.PENDING,
+                    parameters={"light_type": l_type, "energy": 1000.0, "location": [5, 5, 10]}
+                ))
+                step_idx += 1
+            elif "cube" in p_lower or "box" in p_lower or len(steps) == 0:
+                size = 4.0 if ("large" in p_lower or "big" in p_lower) else (1.0 if "small" in p_lower else 2.0)
+                steps.append(ExecutionStep(
+                    id=f"step_{step_idx}",
+                    type=OperationType.CREATE_CUBE,
+                    status=StepStatus.PENDING,
+                    parameters={"size": size, "name": "GameForge_Cube"}
+                ))
+                step_idx += 1
 
         # 2. Material / Color
         color_hex = "#E8B4B8"

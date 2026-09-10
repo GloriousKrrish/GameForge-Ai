@@ -26,7 +26,10 @@ class SceneObject(BaseModel):
     transform: TransformModel = Field(default_factory=TransformModel)
     material: Optional[MaterialModel] = None
     parent_id: Optional[str] = None
+    visible: bool = True
     properties: Dict[str, Any] = Field(default_factory=dict)
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class CameraModel(BaseModel):
@@ -71,3 +74,32 @@ class TransformUpdateRequest(BaseModel):
     position: Optional[List[float]] = None
     rotation: Optional[List[float]] = None
     scale: Optional[List[float]] = None
+
+
+class SceneObjectCreateRequest(BaseModel):
+    name: str
+    object_type: str = "CUBE"
+    position: Optional[List[float]] = None
+    rotation: Optional[List[float]] = None
+    scale: Optional[List[float]] = None
+    color: Optional[str] = None
+    parent_id: Optional[str] = None
+
+
+class SceneObjectUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    position: Optional[List[float]] = None
+    rotation: Optional[List[float]] = None
+    scale: Optional[List[float]] = None
+    visible: Optional[bool] = None
+    parent_id: Optional[str] = None
+    color: Optional[str] = None
+
+
+class ParentRequest(BaseModel):
+    child_id: str
+    parent_id: str
+
+
+class UnparentRequest(BaseModel):
+    child_id: str

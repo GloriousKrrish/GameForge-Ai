@@ -35,71 +35,118 @@ def find_blender_binary() -> Optional[str]:
 
 
 def generate_fallback_glb(graph: ExecutionGraph, output_path: str) -> bool:
-    """Fallback GLB generator using trimesh when Blender is unavailable."""
+    """Fallback GLB generator using trimesh when Blender is unavailable.
+    Renders all active meshes in the scene into a unified GLB artifact.
+    """
     try:
         import trimesh
         import numpy as np
 
-        shape_type = "cube"
-        color = [230, 180, 184, 255]  # Default rose
-        scale = [1.0, 1.0, 1.0]
-        position = [0.0, 0.0, 0.0]
-        rotation_deg = [0.0, 0.0, 0.0]
-
-        # Track created meshes
-        meshes = []
+        # Map of object_name or index -> mesh dict
+        scene_meshes = {}
+        active_key = None
+        mesh_counter = 0
 
         for step in graph.steps:
-            if step.type == OperationType.CREATE_SPHERE:
-                radius = step.parameters.get("radius", 1.0)
-                m = trimesh.creation.icosphere(radius=radius, subdivisions=3)
-                m.apply_translation(step.parameters.get("location", [0, 0, 0]))
-                meshes.append(m)
-            elif step.type == OperationType.CREATE_CUBE:
-                size = step.parameters.get("size", 2.0)
-                m = trimesh.creation.box(extents=(size, size, size))
-                m.apply_translation(step.parameters.get("location", [0, 0, 0]))
-                meshes.append(m)
-            elif step.type == OperationType.DUPLICATE_OBJECT:
-                if meshes:
-                    dup = meshes[-1].copy()
-                    offset = step.parameters.get("offset", [1, 0, 0])
-                    dup.apply_translation(offset)
-                    meshes.append(dup)
-            elif step.type == OperationType.SET_MATERIAL:
-                hex_c = step.parameters.get("color", "#E8B4B8").lstrip('#')
-                if len(hex_c) == 6:
-                    color = [int(hex_c[0:2], 16), int(hex_c[2:4], 16), int(hex_c[4:6], 16), 255]
-            elif step.type == OperationType.MOVE_OBJECT:
-                position = step.parameters.get("position", position)
-            elif step.type == OperationType.SCALE_OBJECT:
-                scale = step.parameters.get("scale", scale)
-            elif step.type == OperationType.ROTATE_OBJECT:
-                rotation_deg = step.parameters.get("rotation", rotation_deg)
+            op = step.type
+            params = step.parameters
 
-        if not meshes:
-            mesh = trimesh.creation.box(extents=(2.0, 2.0, 2.0))
-        elif len(meshes) == 1:
-            mesh = meshes[0]
+            if op in (OperationType.CREATE_CUBE, OperationType.CREATE_SPHERE):
+                mesh_counter += 1
+                name = params.get("name", f"Object_{mesh_counter}")
+                loc = params.get("location", [0.0, 0.0, 0.0])
+
+                if op == OperationType.CREATE_SPHERE:
+                    radius = params.get("radius", 1.0)
+                    m = trimesh.creation.icosphere(radius=radius, subdivisions=3)
+                else:
+                    size = params.get("size", 2.0)
+                    m = trimesh.creation.box(extents=(size, size, size))
+
+                m.apply_translation(loc)
+                active_key = name
+                scene_meshes[active_key] = {
+                    "mesh": m,
+                    "color": [232, 180, 184, 255],
+                    "visible": True,
+                }
+
+            elif op == OperationType.DUPLICATE_OBJECT:
+                if active_key and active_key in scene_meshes:
+                    orig = scene_meshes[active_key]
+                    dup_m = orig["mesh"].copy()
+                    offset = params.get("offset", [1.0, 0.0, 0.0])
+                    dup_m.apply_translation(offset)
+                    mesh_counter += 1
+                    dup_name = params.get("new_name", f"{active_key}_copy_{mesh_counter}")
+                    scene_meshes[dup_name] = {
+                        "mesh": dup_m,
+                        "color": list(orig["color"]),
+                        "visible": True,
+                    }
+                    active_key = dup_name
+
+            elif op == OperationType.MOVE_OBJECT:
+                if active_key and active_key in scene_meshes:
+                    pos = params.get("position", [0.0, 0.0, 0.0])
+                    # Reset centroid to position
+                    scene_meshes[active_key]["mesh"].apply_translation(pos)
+
+            elif op == OperationType.ROTATE_OBJECT:
+                if active_key and active_key in scene_meshes:
+                    rot_deg = params.get("rotation", [0.0, 0.0, 0.0])
+                    rot_rad = [math.radians(d) for d in rot_deg]
+                    rot_matrix = trimesh.transformations.euler_matrix(*rot_rad)
+                    scene_meshes[active_key]["mesh"].apply_transform(rot_matrix)
+
+            elif op == OperationType.SCALE_OBJECT:
+                if active_key and active_key in scene_meshes:
+                    scl = params.get("scale", [1.0, 1.0, 1.0])
+                    scene_meshes[active_key]["mesh"].apply_scale(scl)
+
+            elif op == OperationType.SET_MATERIAL:
+                if active_key and active_key in scene_meshes:
+                    hex_c = params.get("color", "#E8B4B8").lstrip('#')
+                    if len(hex_c) == 6:
+                        scene_meshes[active_key]["color"] = [
+                            int(hex_c[0:2], 16), int(hex_c[2:4], 16), int(hex_c[4:6], 16), 255
+                        ]
+
+            elif op == OperationType.HIDE_OBJECT:
+                target = params.get("target_name") or active_key
+                if target and target in scene_meshes:
+                    scene_meshes[target]["visible"] = False
+
+            elif op == OperationType.SHOW_OBJECT:
+                target = params.get("target_name") or active_key
+                if target and target in scene_meshes:
+                    scene_meshes[target]["visible"] = True
+
+            elif op == OperationType.DELETE_OBJECT:
+                target = params.get("target_name") or active_key
+                if target and target in scene_meshes:
+                    del scene_meshes[target]
+                    active_key = list(scene_meshes.keys())[-1] if scene_meshes else None
+
+        visible_meshes = []
+        for key, item in scene_meshes.items():
+            if item["visible"]:
+                m = item["mesh"].copy()
+                m.visual.face_colors = item["color"]
+                visible_meshes.append(m)
+
+        if not visible_meshes:
+            default_m = trimesh.creation.box(extents=(2.0, 2.0, 2.0))
+            default_m.visual.face_colors = [230, 180, 184, 255]
+            scene_mesh = default_m
+        elif len(visible_meshes) == 1:
+            scene_mesh = visible_meshes[0]
         else:
-            mesh = trimesh.util.concatenate(meshes)
-
-        # Apply scale
-        mesh.apply_scale(scale)
-
-        # Apply rotation (degrees -> radians)
-        rot_rad = [math.radians(d) for d in rotation_deg]
-        rot_matrix = trimesh.transformations.euler_matrix(*rot_rad)
-        mesh.apply_transform(rot_matrix)
-
-        # Apply translation
-        mesh.apply_translation(position)
-
-        mesh.visual.face_colors = color
+            scene_mesh = trimesh.util.concatenate(visible_meshes)
 
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-        mesh.export(output_path, file_type="glb")
-        logger.info("Fallback GLB exported to %s", output_path)
+        scene_mesh.export(output_path, file_type="glb")
+        logger.info("Fallback GLB exported with %d objects to %s", len(visible_meshes), output_path)
         return True
 
     except Exception as e:

@@ -11,6 +11,9 @@ interface GameForgeState {
   objectStats: { objects: number; tris: number };
   errorMessage: string | null;
 
+  selectedObjectId: string | null;
+  activeSceneData: any | null;
+
   selectedObject: {
     name: string;
     position: [number, number, number];
@@ -24,8 +27,12 @@ interface GameForgeState {
     position: [number, number, number];
     rotation: [number, number, number];
     scale: [number, number, number];
+    parent_id?: string | null;
+    visible?: boolean;
   }>;
 
+  setSelectedObjectId: (id: string | null) => void;
+  setActiveSceneData: (data: any) => void;
   setSelectedObject: (obj: {
     name: string;
     position: [number, number, number];
@@ -39,6 +46,8 @@ interface GameForgeState {
     position: [number, number, number];
     rotation: [number, number, number];
     scale: [number, number, number];
+    parent_id?: string | null;
+    visible?: boolean;
   }>) => void;
   setSelectedAsset: (asset: Asset | null) => void;
   setPrompt: (prompt: string) => void;
@@ -59,6 +68,8 @@ export const useGameForgeStore = create<GameForgeState>((set) => ({
   currentJobId: null,
   objectStats: { objects: 0, tris: 0 },
   errorMessage: null,
+  selectedObjectId: "obj_default_cube",
+  activeSceneData: null,
 
   selectedObject: {
     name: "GameForge_Cube",
@@ -74,8 +85,11 @@ export const useGameForgeStore = create<GameForgeState>((set) => ({
       position: [0, 0, 0] as [number, number, number],
       rotation: [0, 0, 0] as [number, number, number],
       scale: [1, 1, 1] as [number, number, number],
+      visible: true,
     }
   ],
+  setSelectedObjectId: (selectedObjectId) => set({ selectedObjectId }),
+  setActiveSceneData: (activeSceneData) => set({ activeSceneData }),
   setSelectedObject: (selectedObject) => set({ selectedObject }),
   setSceneObjects: (sceneObjects) => set({ sceneObjects }),
   setSelectedAsset: (selectedAsset) => set({ selectedAsset }),
