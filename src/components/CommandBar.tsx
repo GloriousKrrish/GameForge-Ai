@@ -39,6 +39,28 @@ export function CommandBar() {
           if (data.asset_url) {
             setActiveAssetUrl(data.asset_url);
           }
+          try {
+            const { getActiveScene } = await import("@/api/scene");
+            const scene = await getActiveScene();
+            if (scene && scene.objects) {
+              const mapped = scene.objects.map((o: any) => ({
+                id: o.id,
+                name: o.name,
+                type: o.object_type,
+                position: o.transform.position,
+                rotation: o.transform.rotation,
+                scale: o.transform.scale,
+                parent_id: o.parent_id,
+                visible: o.visible ?? true,
+              }));
+              useGameForgeStore.getState().setSceneObjects(mapped);
+              if (mapped.length > 0) {
+                useGameForgeStore.getState().setSelectedObjectId(mapped[mapped.length - 1].id);
+              }
+            }
+          } catch (sceneErr) {
+            console.error("Failed to sync active scene after generation:", sceneErr);
+          }
         } else if (data.status === "FAILED") {
           clearInterval(interval);
           setGenerationStatus("failed");

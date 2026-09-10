@@ -2,6 +2,7 @@
 All real endpoints for the GameForge backend. Every endpoint performs a real operation.
 """
 import logging
+import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks, status
@@ -18,7 +19,9 @@ from app.services.job_manager import job_manager
 from app.services.asset_manager import asset_manager
 from app.execution.engine import ExecutionEngine
 from app.db.repositories import SceneRepository, MaterialRepository
-from app.models.domain import Material, MaterialCreateRequest, MaterialUpdateRequest, AssignMaterialRequest
+from app.models.domain import Material, MaterialCreateRequest, MaterialUpdateRequest, AssignMaterialRequest, AssetGenerationRequest, InstantiateAssetRequest, AssetModel
+from app.providers.adapter import provider_adapter
+from app.services.asset_validator import AssetValidator, AssetNormalizer
 
 logger = logging.getLogger("gameforge.api")
 
@@ -48,6 +51,66 @@ def process_generation_job(job_id: str):
     success, message, glb_url = execution_engine.execute(job.execution_graph, job_id)
 
     if success:
+        # Synchronize generated objects and asset URL into persistent Scene database
+        from app.db.repositories import SceneRepository
+        from app.models.domain import SceneObject, TransformModel, MaterialModel
+        from app.schemas.execution_graph import OperationType
+        import uuid
+
+        scene = SceneRepository.get_or_create_default_scene()
+        last_created_obj = None
+
+        for step in job.execution_graph.steps:
+            op = step.type
+            params = step.parameters
+            if op == OperationType.CREATE_CUBE:
+                obj_id = f"obj_{uuid.uuid4().hex[:8]}"
+                name = params.get("name", "GameForge_Cube")
+                new_obj = SceneObject(
+                    id=obj_id,
+                    name=name,
+                    object_type="CUBE",
+                    transform=TransformModel(position=params.get("location", [0.0, 0.0, 0.0])),
+                    material=MaterialModel(color="#E8B4B8", metallic=0.4, roughness=0.5)
+                )
+                scene.objects.append(new_obj)
+                last_created_obj = new_obj
+            elif op == OperationType.CREATE_SPHERE:
+                obj_id = f"obj_{uuid.uuid4().hex[:8]}"
+                name = params.get("name", "GameForge_Sphere")
+                new_obj = SceneObject(
+                    id=obj_id,
+                    name=name,
+                    object_type="SPHERE",
+                    transform=TransformModel(position=params.get("location", [0.0, 0.0, 0.0])),
+                    material=MaterialModel(color="#E8B4B8", metallic=0.4, roughness=0.5)
+                )
+                scene.objects.append(new_obj)
+                last_created_obj = new_obj
+            elif op in (OperationType.SET_MATERIAL, OperationType.CREATE_MATERIAL):
+                target = last_created_obj or (scene.objects[-1] if scene.objects else None)
+                if target:
+                    color_val = params.get("color")
+                    if not color_val and "base_color" in params:
+                        bc = params["base_color"]
+                        color_val = f"#{int(bc[0]*255):02X}{int(bc[1]*255):02X}{int(bc[2]*255):02X}"
+                    if color_val:
+                        if not target.material:
+                            target.material = MaterialModel(color=color_val)
+                        else:
+                            target.material.color = color_val
+                    if "metallic" in params and target.material:
+                        target.material.metallic = float(params["metallic"])
+                    if "roughness" in params and target.material:
+                        target.material.roughness = float(params["roughness"])
+            elif op == OperationType.MOVE_OBJECT:
+                target = last_created_obj or (scene.objects[-1] if scene.objects else None)
+                if target and "position" in params:
+                    target.transform.position = params["position"]
+
+        scene.active_asset_url = glb_url
+        SceneRepository.save_scene(scene)
+
         # Register the generated asset
         asset = asset_manager.register_asset(
             name=f"Generated: {job.prompt[:50]}",
@@ -442,3 +505,91 @@ async def unassign_material_from_object(object_id: str):
     target.material = None
     updated_scene = SceneRepository.save_scene(scene)
     return {"success": True, "scene": updated_scene}
+
+
+# ---------------------------------------------------------------------------
+# AI 3D Asset Generation & Instantiation (Phase 4)
+# ---------------------------------------------------------------------------
+@router.post("/assets/generate", response_model=AssetModel, status_code=status.HTTP_201_CREATED)
+async def generate_3d_asset(req: AssetGenerationRequest):
+    """Generate a 3D asset using configured 3D Generation Provider or explicit Fallback."""
+    job_id = f"job_asset_{uuid.uuid4().hex[:8]}"
+    res = await provider_adapter.generate(req, job_id)
+
+    if not res.success or not res.glb_file_path:
+        raise HTTPException(
+            status_code=500,
+            detail=res.error_message or "3D asset generation failed."
+        )
+
+    # Validate asset binary & polycount limits
+    is_valid, val_err, metadata = AssetValidator.validate_glb_file(res.glb_file_path)
+    if not is_valid:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Generated asset validation failed: {val_err}"
+        )
+
+    # Normalize geometry origin
+    AssetNormalizer.normalize_glb(res.glb_file_path)
+
+    # Register into persistent SQLite Asset Registry
+    asset = asset_manager.register_asset(
+        name=req.prompt.title()[:50],
+        glb_url=res.glb_url or f"/exports/{Path(res.glb_file_path).name}",
+        description=f"Generated prompt: '{req.prompt}' ({req.style}, {req.quality})",
+        provider=res.provider_name,
+        provider_asset_id=res.provider_asset_id,
+        generation_prompt=req.prompt,
+        vertex_count=metadata.get("vertex_count", 0),
+        triangle_count=metadata.get("triangle_count", res.triangle_count),
+        metadata=res.metadata,
+        project_id=req.project_id,
+    )
+    return asset
+
+
+@router.post("/assets/{asset_id}/instantiate")
+async def instantiate_asset_in_scene(asset_id: str, req: InstantiateAssetRequest):
+    """Instantiate a registered 3D Asset into the active Scene as a SceneObject reference."""
+    asset = asset_manager.get_asset(asset_id)
+    if not asset:
+        raise HTTPException(status_code=404, detail=f"Asset '{asset_id}' not found.")
+
+    scene = SceneRepository.get_or_create_default_scene()
+    from app.models.domain import SceneObject, TransformModel, MaterialModel
+    obj_id = f"obj_{uuid.uuid4().hex[:8]}"
+    obj_name = req.name or f"{asset.name}_Instance"
+
+    instantiated_obj = SceneObject(
+        id=obj_id,
+        name=obj_name,
+        object_type="MESH",
+        transform=TransformModel(
+            position=req.position or [0.0, 0.0, 0.0],
+            rotation=req.rotation or [0.0, 0.0, 0.0],
+            scale=req.scale or [1.0, 1.0, 1.0],
+        ),
+        properties={"asset_id": asset.id, "glb_url": asset.glb_url},
+        material=MaterialModel(color="#E8B4B8", metallic=0.4, roughness=0.5)
+    )
+
+    scene.objects.append(instantiated_obj)
+    scene.active_asset_url = asset.glb_url
+    updated_scene = SceneRepository.save_scene(scene)
+
+    return {
+        "success": True,
+        "scene": updated_scene,
+        "instantiated_object": instantiated_obj,
+        "glb_url": asset.glb_url
+    }
+
+
+@router.delete("/assets/{asset_id}")
+async def delete_asset(asset_id: str):
+    """Delete an asset from the registry."""
+    deleted = asset_manager.delete_asset(asset_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Asset '{asset_id}' not found.")
+    return {"success": True, "message": f"Asset '{asset_id}' deleted."}

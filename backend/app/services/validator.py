@@ -177,6 +177,21 @@ class ExecutionGraphValidator:
             if not mat_ref or not isinstance(mat_ref, str):
                 return f"Invalid material reference at step '{step_id}'. Must specify material_id or material_name."
 
+        elif op == OperationType.GENERATE_ASSET:
+            prompt = params.get("prompt")
+            if not prompt or not isinstance(prompt, str) or len(prompt.strip()) == 0:
+                return f"Invalid generation prompt at step '{step_id}'. Must be a non-empty string."
+
+        elif op == OperationType.IMPORT_ASSET:
+            file_path = params.get("file_path") or params.get("glb_url")
+            if not file_path or not isinstance(file_path, str):
+                return f"Invalid import path at step '{step_id}'. Must specify file_path or glb_url string."
+
+        elif op == OperationType.ADD_ASSET_TO_SCENE:
+            asset_ref = params.get("asset_id") or params.get("asset_name")
+            if not asset_ref or not isinstance(asset_ref, str):
+                return f"Invalid asset reference at step '{step_id}'. Must specify asset_id or asset_name."
+
         elif op == OperationType.DELETE_OBJECT:
             # target_name is optional; if omitted, deletes the active object
             pass

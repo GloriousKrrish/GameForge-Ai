@@ -24,6 +24,43 @@ class TextureType(str, Enum):
     AO = "AO"
 
 
+class AssetSourceType(str, Enum):
+    GENERATED = "GENERATED"
+    IMPORTED = "IMPORTED"
+    PROCEDURAL = "PROCEDURAL"
+    SYSTEM = "SYSTEM"
+
+
+class AssetStatus(str, Enum):
+    PENDING = "PENDING"
+    VALIDATING = "VALIDATING"
+    READY = "READY"
+    FAILED = "FAILED"
+
+
+class AssetModel(BaseModel):
+    id: str
+    project_id: str = "proj_default"
+    name: str
+    description: Optional[str] = None
+    source_type: AssetSourceType = AssetSourceType.GENERATED
+    provider: str = "DETERMINISTIC_FALLBACK"
+    provider_asset_id: Optional[str] = None
+    glb_url: str
+    format: str = "glb"
+    mime_type: str = "model/gltf-binary"
+    thumbnail_path: Optional[str] = None
+    status: AssetStatus = AssetStatus.READY
+    generation_prompt: Optional[str] = None
+    vertex_count: int = 0
+    triangle_count: int = 0
+    material_count: int = 1
+    animation_count: int = 0
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
 class Texture(BaseModel):
     id: str
     name: str
@@ -180,3 +217,22 @@ class MaterialUpdateRequest(BaseModel):
 
 class AssignMaterialRequest(BaseModel):
     material_id: str
+
+
+class AssetGenerationRequest(BaseModel):
+    prompt: str
+    style: str = "realistic"  # realistic, stylized, low-poly
+    quality: str = "standard"  # draft, standard, high
+    poly_budget: int = 50000
+    target_format: str = "glb"
+    target_use: str = "game_asset"
+    generate_materials: bool = True
+    project_id: str = "proj_default"
+
+
+class InstantiateAssetRequest(BaseModel):
+    asset_id: str
+    name: Optional[str] = None
+    position: Optional[List[float]] = None
+    rotation: Optional[List[float]] = None
+    scale: Optional[List[float]] = None
