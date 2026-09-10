@@ -1,0 +1,115 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * GameForge AI design system — dark cinematic studio UI.
+ * All colors are oklch semantic tokens. Never hardcode colors in components.
+ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-panel: var(--panel);
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --color-rose: var(--rose);
+  --font-sans: var(--font-ui);
+  --font-serif: var(--font-display);
+  --shadow-gold: 0 0 0 1px oklch(0.77 0.13 88 / 0.18), 0 8px 30px oklch(0.77 0.13 88 / 0.08);
+  --shadow-panel: 0 1px 0 oklch(1 0 0 / 0.03) inset, 0 20px 40px oklch(0 0 0 / 0.35);
+}
+
+:root {
+  --radius: 0.5rem;
+  --font-ui:
+    Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Cormorant Garamond", ui-serif, Georgia, serif;
+
+  --background: oklch(0.155 0.004 20);
+  --foreground: oklch(0.93 0.006 80);
+  --panel: oklch(0.205 0.005 340);
+  --card: oklch(0.205 0.005 340);
+  --card-foreground: oklch(0.93 0.006 80);
+  --popover: oklch(0.205 0.005 340);
+  --popover-foreground: oklch(0.93 0.006 80);
+
+  --gold: oklch(0.78 0.125 88);
+  --gold-soft: oklch(0.72 0.088 84);
+  --rose: oklch(0.83 0.055 15);
+
+  --primary: oklch(0.78 0.125 88);
+  --primary-foreground: oklch(0.16 0.01 80);
+  --secondary: oklch(0.26 0.006 340);
+  --secondary-foreground: oklch(0.9 0.006 80);
+  --muted: oklch(0.24 0.005 340);
+  --muted-foreground: oklch(0.66 0.01 80);
+  --accent: oklch(0.28 0.012 60);
+  --accent-foreground: oklch(0.93 0.006 80);
+  --destructive: oklch(0.6 0.2 25);
+  --destructive-foreground: oklch(0.97 0.006 80);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 10%);
+  --ring: oklch(0.78 0.125 88 / 45%);
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-ui);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@utility panel-surface {
+  background-color: color-mix(in oklab, var(--panel) 85%, transparent);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+}
+
+@utility gold-glow {
+  box-shadow: var(--shadow-gold);
+}
+
+@utility viewport-grid {
+  background-image:
+    linear-gradient(to right, oklch(1 0 0 / 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, oklch(1 0 0 / 0.045) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
