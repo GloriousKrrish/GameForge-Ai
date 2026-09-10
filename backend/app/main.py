@@ -37,7 +37,7 @@ app.add_middleware(
 )
 
 # Static file serving for exported GLB assets
-PUBLIC_EXPORTS_DIR = Path(__file__).parent.parent / "public" / "exports"
+PUBLIC_EXPORTS_DIR = Path(__file__).resolve().parents[2] / "public" / "exports"
 PUBLIC_EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/exports", StaticFiles(directory=str(PUBLIC_EXPORTS_DIR)), name="exports")
 
