@@ -75,18 +75,25 @@ class DeterministicPlanner(BasePlanner):
         metallic = 0.4
         roughness = 0.5
 
+        base_rgb = [0.91, 0.71, 0.72]
         if "red" in p_lower:
             color_hex = "#FF3333"
+            base_rgb = [1.0, 0.2, 0.2]
         elif "blue" in p_lower:
             color_hex = "#3366FF"
+            base_rgb = [0.2, 0.4, 1.0]
         elif "green" in p_lower:
             color_hex = "#33FF66"
+            base_rgb = [0.2, 1.0, 0.4]
         elif "gold" in p_lower or "yellow" in p_lower:
             color_hex = "#FFD700"
+            base_rgb = [1.0, 0.84, 0.0]
         elif "black" in p_lower:
             color_hex = "#1A1A1A"
+            base_rgb = [0.05, 0.05, 0.05]
         elif "white" in p_lower:
             color_hex = "#F0F0F0"
+            base_rgb = [0.95, 0.95, 0.95]
 
         if "metallic" in p_lower or "metal" in p_lower:
             metallic = 0.9
@@ -98,7 +105,13 @@ class DeterministicPlanner(BasePlanner):
             id=f"step_{step_idx}",
             type=OperationType.SET_MATERIAL,
             status=StepStatus.PENDING,
-            parameters={"color": color_hex, "metallic": metallic, "roughness": roughness}
+            parameters={
+                "color": color_hex,
+                "base_color": base_rgb,
+                "metallic": metallic,
+                "roughness": roughness,
+                "target": target_obj.get("id") if target_obj else None
+            }
         ))
         step_idx += 1
 

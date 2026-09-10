@@ -33,6 +33,7 @@ interface GameForgeState {
 
   setSelectedObjectId: (id: string | null) => void;
   setActiveSceneData: (data: any) => void;
+  setMaterialsList: (materials: any[]) => void;
   setSelectedObject: (obj: {
     name: string;
     position: [number, number, number];
@@ -70,6 +71,8 @@ export const useGameForgeStore = create<GameForgeState>((set) => ({
   errorMessage: null,
   selectedObjectId: "obj_default_cube",
   activeSceneData: null,
+  materialsList: [],
+  setMaterialsList: (materialsList) => set({ materialsList }),
 
   selectedObject: {
     name: "GameForge_Cube",

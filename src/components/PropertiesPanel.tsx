@@ -214,14 +214,109 @@ export function PropertiesPanel() {
         </div>
       </section>
 
+      {/* Material (Phase 3B PBR Controls) */}
       <section className="space-y-3">
-        <p className="text-[10px] uppercase tracking-[0.2em] text-gold-soft">Material</p>
-        <div className="grid grid-cols-[64px_1fr] items-center gap-2">
+        <p className="text-[10px] uppercase tracking-[0.2em] text-gold-soft">Material (PBR Engine)</p>
+
+        {/* Preset Selector */}
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] text-muted-foreground">Quick Preset</span>
+          <select
+            onChange={async (e) => {
+              const presetId = e.target.value;
+              if (!presetId || !currentObj) return;
+              setIsUpdating(true);
+              try {
+                const { assignMaterialToObject } = await import("@/api/material");
+                const { getActiveScene } = await import("@/api/scene");
+                await assignMaterialToObject(currentObj.id, presetId);
+                const scene = await getActiveScene();
+                if (scene && scene.objects) {
+                  const mapped = scene.objects.map((o: any) => ({
+                    id: o.id,
+                    name: o.name,
+                    type: o.object_type,
+                    position: o.transform.position,
+                    rotation: o.transform.rotation,
+                    scale: o.transform.scale,
+                    parent_id: o.parent_id,
+                    visible: o.visible ?? true,
+                  }));
+                  setSceneObjects(mapped);
+                }
+              } catch (err: any) {
+                setErrorMessage(err.message || "Failed to apply preset.");
+              } finally {
+                setIsUpdating(false);
+              }
+            }}
+            className="w-full rounded border border-border bg-secondary/80 px-2 py-1 text-xs text-foreground focus:border-gold focus:outline-none"
+          >
+            <option value="">-- Apply Preset --</option>
+            <option value="mat_preset_matte_black">Matte Black</option>
+            <option value="mat_preset_brushed_gold">Brushed Gold</option>
+            <option value="mat_preset_chrome">Chrome</option>
+            <option value="mat_preset_plastic">Plastic</option>
+            <option value="mat_preset_rubber">Rubber</option>
+            <option value="mat_preset_glass">Glass</option>
+            <option value="mat_preset_gold">Gold</option>
+          </select>
+        </div>
+
+        {/* Base Color Picker */}
+        <div className="grid grid-cols-[70px_1fr] items-center gap-2">
           <span className="text-xs text-muted-foreground">Base Color</span>
-          <div className="flex items-center gap-2 rounded-md border border-border bg-secondary/60 px-2 py-1.5">
-            <span className="size-4 rounded border border-border bg-rose" />
-            <span className="text-xs text-foreground">#E8B4B8</span>
+          <div className="flex items-center gap-2 rounded-md border border-border bg-secondary/60 px-2 py-1">
+            <input
+              type="color"
+              defaultValue="#E8B4B8"
+              onChange={async (e) => {
+                const colorHex = e.target.value;
+                if (!currentObj) return;
+                try {
+                  const res = await updateObjectTransform(currentObj.name, { color: colorHex } as any);
+                  if (res.success && res.glb_url) {
+                    setActiveAssetUrl(res.glb_url);
+                  }
+                } catch (err: any) {
+                  console.error("Failed to update material color:", err);
+                }
+              }}
+              className="size-5 rounded border border-border bg-transparent cursor-pointer"
+            />
+            <span className="text-xs font-mono text-foreground">Color</span>
           </div>
+        </div>
+
+        {/* Metallic & Roughness sliders */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Metallic</span>
+            <span className="text-[10px] font-mono text-gold-soft">PBR</span>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            defaultValue="0.4"
+            className="w-full accent-gold cursor-pointer"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Roughness</span>
+            <span className="text-[10px] font-mono text-gold-soft">PBR</span>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            defaultValue="0.5"
+            className="w-full accent-gold cursor-pointer"
+          />
         </div>
       </section>
     </aside>

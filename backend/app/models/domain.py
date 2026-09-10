@@ -7,6 +7,35 @@ from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 
 
+from enum import Enum
+
+class AlphaMode(str, Enum):
+    OPAQUE = "OPAQUE"
+    MASK = "MASK"
+    BLEND = "BLEND"
+
+
+class TextureType(str, Enum):
+    BASE_COLOR = "BASE_COLOR"
+    ROUGHNESS = "ROUGHNESS"
+    METALLIC = "METALLIC"
+    NORMAL = "NORMAL"
+    EMISSION = "EMISSION"
+    AO = "AO"
+
+
+class Texture(BaseModel):
+    id: str
+    name: str
+    file_url: str
+    type: TextureType = TextureType.BASE_COLOR
+    width: Optional[int] = None
+    height: Optional[int] = None
+    color_space: str = "sRGB"
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
 class TransformModel(BaseModel):
     position: List[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
     rotation: List[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
@@ -19,17 +48,37 @@ class MaterialModel(BaseModel):
     roughness: float = 0.5
 
 
+class Material(BaseModel):
+    id: str
+    name: str
+    base_color: List[float] = Field(default_factory=lambda: [0.91, 0.71, 0.72])  # RGB [0..1]
+    metallic: float = 0.4
+    roughness: float = 0.5
+    emission_color: List[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
+    emission_strength: float = 0.0
+    opacity: float = 1.0
+    alpha_mode: AlphaMode = AlphaMode.OPAQUE
+    double_sided: bool = False
+    texture_ids: List[str] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
 class SceneObject(BaseModel):
     id: str
     name: str
     object_type: str  # CUBE, SPHERE, MESH, CAMERA, LIGHT
     transform: TransformModel = Field(default_factory=TransformModel)
     material: Optional[MaterialModel] = None
+    material_id: Optional[str] = None
     parent_id: Optional[str] = None
     visible: bool = True
     properties: Dict[str, Any] = Field(default_factory=dict)
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
 
 
 class CameraModel(BaseModel):
@@ -103,3 +152,31 @@ class ParentRequest(BaseModel):
 
 class UnparentRequest(BaseModel):
     child_id: str
+
+
+class MaterialCreateRequest(BaseModel):
+    name: str
+    base_color: Optional[List[float]] = None
+    metallic: Optional[float] = None
+    roughness: Optional[float] = None
+    emission_color: Optional[List[float]] = None
+    emission_strength: Optional[float] = None
+    opacity: Optional[float] = None
+    alpha_mode: Optional[AlphaMode] = None
+    double_sided: Optional[bool] = None
+
+
+class MaterialUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    base_color: Optional[List[float]] = None
+    metallic: Optional[float] = None
+    roughness: Optional[float] = None
+    emission_color: Optional[List[float]] = None
+    emission_strength: Optional[float] = None
+    opacity: Optional[float] = None
+    alpha_mode: Optional[AlphaMode] = None
+    double_sided: Optional[bool] = None
+
+
+class AssignMaterialRequest(BaseModel):
+    material_id: str

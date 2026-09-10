@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Boxes, Box, Layers, Eye, EyeOff, Trash2 } from "lucide-react";
 import { useGameForgeStore } from "@/store/useGameForgeStore";
 import { getActiveScene, updateSceneObject, deleteSceneObject } from "@/api/scene";
+import { listMaterials, assignMaterialToObject } from "@/api/material";
 
 export function Sidebar() {
   const [activeTab, setActiveTab] = useState<"hierarchy" | "assets">("hierarchy");
@@ -12,6 +13,8 @@ export function Sidebar() {
     setSelectedObjectId,
     setSelectedObject,
     setErrorMessage,
+    materialsList,
+    setMaterialsList,
   } = useGameForgeStore();
 
   useEffect(() => {
@@ -35,8 +38,19 @@ export function Sidebar() {
         console.error("Failed to load active scene:", err);
       }
     }
+
+    async function loadMaterials() {
+      try {
+        const mats = await listMaterials();
+        setMaterialsList(mats);
+      } catch (err: any) {
+        console.error("Failed to load materials list:", err);
+      }
+    }
+
     loadScene();
-  }, [setSceneObjects]);
+    loadMaterials();
+  }, [setSceneObjects, setMaterialsList]);
 
   const handleSelect = (obj: any) => {
     setSelectedObjectId(obj.id);
@@ -175,11 +189,69 @@ export function Sidebar() {
           )}
         </div>
       ) : (
-        <div className="mt-3 rounded-md border border-border p-3 text-xs text-muted-foreground">
-          <p className="text-foreground">Assets Library</p>
-          <p className="mt-1 leading-relaxed">
-            Generated mesh GLB models will be listed here.
+        <div className="mt-3 flex flex-col gap-2 overflow-y-auto">
+          <p className="px-2 text-[10px] uppercase tracking-[0.2em] text-muted-foreground pb-1">
+            Materials & Presets
           </p>
+          {materialsList.length === 0 ? (
+            <p className="px-2 text-xs text-muted-foreground">No materials found</p>
+          ) : (
+            materialsList.map((mat) => {
+              const r = Math.round((mat.base_color?.[0] ?? 0.9) * 255);
+              const g = Math.round((mat.base_color?.[1] ?? 0.9) * 255);
+              const b = Math.round((mat.base_color?.[2] ?? 0.9) * 255);
+              const colorStyle = `rgb(${r}, ${g}, ${b})`;
+
+              return (
+                <div
+                  key={mat.id}
+                  className="flex items-center justify-between rounded-md border border-border/60 bg-secondary/30 p-2 text-xs transition-colors hover:border-gold/30"
+                >
+                  <div className="flex items-center gap-2.5 truncate">
+                    <span
+                      className="size-4 shrink-0 rounded-full border border-white/20 shadow-sm"
+                      style={{ backgroundColor: colorStyle }}
+                    />
+                    <div className="flex flex-col truncate">
+                      <span className="font-medium text-foreground truncate">{mat.name}</span>
+                      <span className="text-[10px] text-muted-foreground">
+                        Met: {mat.metallic?.toFixed(1)} · Rgh: {mat.roughness?.toFixed(1)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {selectedObjectId && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          await assignMaterialToObject(selectedObjectId, mat.id);
+                          const scene = await getActiveScene();
+                          if (scene && scene.objects) {
+                            const mapped = scene.objects.map((o: any) => ({
+                              id: o.id,
+                              name: o.name,
+                              type: o.object_type,
+                              position: o.transform.position,
+                              rotation: o.transform.rotation,
+                              scale: o.transform.scale,
+                              parent_id: o.parent_id,
+                              visible: o.visible ?? true,
+                            }));
+                            setSceneObjects(mapped);
+                          }
+                        } catch (err: any) {
+                          setErrorMessage(err.message || "Failed to assign material.");
+                        }
+                      }}
+                      className="rounded bg-gold/15 px-2 py-0.5 text-[10px] font-medium text-gold hover:bg-gold/30 transition-colors"
+                    >
+                      Assign
+                    </button>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
       )}
     </aside>

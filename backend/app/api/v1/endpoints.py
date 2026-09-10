@@ -17,6 +17,8 @@ from app.schemas.execution_graph import (
 from app.services.job_manager import job_manager
 from app.services.asset_manager import asset_manager
 from app.execution.engine import ExecutionEngine
+from app.db.repositories import SceneRepository, MaterialRepository
+from app.models.domain import Material, MaterialCreateRequest, MaterialUpdateRequest, AssignMaterialRequest
 
 logger = logging.getLogger("gameforge.api")
 
@@ -365,3 +367,78 @@ async def export_asset(req: ExportRequest):
         media_type="model/gltf-binary",
         filename=f"{asset.name.replace(' ', '_')}.glb",
     )
+
+
+# ---------------------------------------------------------------------------
+# Materials & Textures (Phase 3B)
+# ---------------------------------------------------------------------------
+@router.get("/materials", response_model=list[Material])
+async def list_materials():
+    """List all persistent materials and built-in presets."""
+    return MaterialRepository.list_materials()
+
+
+@router.get("/materials/{material_id}", response_model=Material)
+async def get_material(material_id: str):
+    """Get metadata for a specific material."""
+    mat = MaterialRepository.get_material(material_id)
+    if not mat:
+        raise HTTPException(status_code=404, detail=f"Material '{material_id}' not found.")
+    return mat
+
+
+@router.post("/materials", response_model=Material, status_code=status.HTTP_201_CREATED)
+async def create_material(req: MaterialCreateRequest):
+    """Create a new persistent Material entity."""
+    return MaterialRepository.create_material(
+        name=req.name,
+        base_color=req.base_color,
+        metallic=req.metallic,
+        roughness=req.roughness,
+        emission_color=req.emission_color,
+        emission_strength=req.emission_strength,
+        opacity=req.opacity,
+        alpha_mode=req.alpha_mode,
+        double_sided=req.double_sided,
+    )
+
+
+@router.patch("/materials/{material_id}", response_model=Material)
+async def update_material(material_id: str, req: MaterialUpdateRequest):
+    """Update properties of an existing Material."""
+    mat = MaterialRepository.update_material(material_id, req.model_dump(exclude_unset=True))
+    if not mat:
+        raise HTTPException(status_code=404, detail=f"Material '{material_id}' not found.")
+    return mat
+
+
+@router.delete("/materials/{material_id}")
+async def delete_material(material_id: str):
+    """Delete a material entity."""
+    deleted = MaterialRepository.delete_material(material_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Material '{material_id}' not found.")
+    return {"success": True, "message": f"Material '{material_id}' deleted successfully."}
+
+
+@router.post("/scenes/objects/{object_id}/material")
+async def assign_material_to_object(object_id: str, req: AssignMaterialRequest):
+    """Assign a persistent Material to a SceneObject."""
+    scene = SceneRepository.get_or_create_default_scene()
+    updated_scene, err = MaterialRepository.assign_material_to_object(scene.id, object_id, req.material_id)
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+    return {"success": True, "scene": updated_scene}
+
+
+@router.delete("/scenes/objects/{object_id}/material")
+async def unassign_material_from_object(object_id: str):
+    """Clear material assignment from a SceneObject."""
+    scene = SceneRepository.get_or_create_default_scene()
+    target = next((o for o in scene.objects if o.id == object_id or o.name.lower() == object_id.lower()), None)
+    if not target:
+        raise HTTPException(status_code=404, detail=f"Object '{object_id}' not found.")
+    target.material_id = None
+    target.material = None
+    updated_scene = SceneRepository.save_scene(scene)
+    return {"success": True, "scene": updated_scene}

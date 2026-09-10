@@ -40,6 +40,9 @@ ALLOWED OPERATION TYPES:
 - RENAME_OBJECT: parameters {"new_name": string}
 - HIDE_OBJECT: parameters {"target_name": string}
 - SHOW_OBJECT: parameters {"target_name": string}
+- CREATE_MATERIAL: parameters {"name": string, "base_color": [r,g,b], "metallic": float(0-1), "roughness": float(0-1), "emission_color": [r,g,b], "emission_strength": float, "opacity": float(0-1), "alpha_mode": "OPAQUE"|"MASK"|"BLEND"}
+- UPDATE_MATERIAL: parameters {"material_id": string, "base_color": [r,g,b], "metallic": float, "roughness": float}
+- ASSIGN_MATERIAL: parameters {"material_id": string, "target": string}
 - EXPORT_GLB: parameters {} (MUST BE THE FINAL STEP)
 
 CRITICAL RULES:

@@ -107,29 +107,82 @@ def execute_graph(payload_json: str):
                 active_obj.scale = tuple(scale)
                 log(f"  Scaled '{active_obj.name}' to {scale}")
 
-        # ---- SET_MATERIAL ----
-        elif op_type == "SET_MATERIAL":
-            if active_obj:
-                mat = bpy.data.materials.new(name="GameForge_Material")
-                mat.use_nodes = True
-                nodes = mat.node_tree.nodes
-                bsdf = nodes.get("Principled BSDF")
+        # ---- SET_MATERIAL / CREATE_MATERIAL / UPDATE_MATERIAL ----
+        elif op_type in ("SET_MATERIAL", "CREATE_MATERIAL", "UPDATE_MATERIAL"):
+            mat_name = params.get("name", f"Material_{step_id}")
+            mat = bpy.data.materials.get(mat_name)
+            if not mat:
+                mat = bpy.data.materials.new(name=mat_name)
+            mat.use_nodes = True
+            nodes = mat.node_tree.nodes
+            bsdf = nodes.get("Principled BSDF")
 
-                if bsdf:
+            if bsdf:
+                # Base Color
+                base_color = params.get("base_color")
+                if base_color is not None and isinstance(base_color, list) and len(base_color) == 3:
+                    bsdf.inputs['Base Color'].default_value = (base_color[0], base_color[1], base_color[2], 1.0)
+                elif "color" in params:
                     color_hex = params.get("color", "#E8B4B8")
-                    rgba = hex_to_rgb(color_hex)
-                    bsdf.inputs['Base Color'].default_value = rgba
+                    bsdf.inputs['Base Color'].default_value = hex_to_rgb(color_hex)
 
-                    if 'Metallic' in bsdf.inputs:
-                        bsdf.inputs['Metallic'].default_value = params.get("metallic", 0.4)
-                    if 'Roughness' in bsdf.inputs:
-                        bsdf.inputs['Roughness'].default_value = params.get("roughness", 0.5)
+                # Metallic
+                if 'Metallic' in bsdf.inputs and 'metallic' in params:
+                    bsdf.inputs['Metallic'].default_value = float(params["metallic"])
 
-                if not active_obj.data.materials:
-                    active_obj.data.materials.append(mat)
+                # Roughness
+                if 'Roughness' in bsdf.inputs and 'roughness' in params:
+                    bsdf.inputs['Roughness'].default_value = float(params["roughness"])
+
+                # Emission
+                emission_color = params.get("emission_color")
+                if emission_color is not None and 'Emission Color' in bsdf.inputs:
+                    bsdf.inputs['Emission Color'].default_value = (emission_color[0], emission_color[1], emission_color[2], 1.0)
+                if 'emission_strength' in params and 'Emission Strength' in bsdf.inputs:
+                    bsdf.inputs['Emission Strength'].default_value = float(params["emission_strength"])
+
+                # Opacity / Alpha
+                if 'opacity' in params and 'Alpha' in bsdf.inputs:
+                    alpha_val = float(params["opacity"])
+                    bsdf.inputs['Alpha'].default_value = alpha_val
+
+                # Alpha Mode
+                alpha_mode = params.get("alpha_mode", "OPAQUE")
+                if alpha_mode == "BLEND":
+                    mat.blend_method = 'BLEND'
+                elif alpha_mode == "MASK":
+                    mat.blend_method = 'CLIP'
                 else:
-                    active_obj.data.materials[0] = mat
-                log(f"  Applied material to '{active_obj.name}' color={params.get('color', '#E8B4B8')}")
+                    mat.blend_method = 'OPAQUE'
+
+                # Double Sided
+                if "double_sided" in params:
+                    mat.use_backface_culling = not bool(params["double_sided"])
+
+            target_ref = params.get("target") or params.get("object_id") or params.get("object_name")
+            target_obj = bpy.data.objects.get(target_ref) if target_ref else active_obj
+            if target_obj and hasattr(target_obj, "data") and hasattr(target_obj.data, "materials"):
+                if not target_obj.data.materials:
+                    target_obj.data.materials.append(mat)
+                else:
+                    target_obj.data.materials[0] = mat
+                log(f"  Applied material '{mat.name}' to object '{target_obj.name}'")
+
+        # ---- ASSIGN_MATERIAL ----
+        elif op_type == "ASSIGN_MATERIAL":
+            mat_ref = params.get("material_id") or params.get("material_name") or params.get("name")
+            target_ref = params.get("target") or params.get("object_id") or params.get("object_name")
+            mat = bpy.data.materials.get(mat_ref)
+            target_obj = bpy.data.objects.get(target_ref) if target_ref else active_obj
+
+            if mat and target_obj and hasattr(target_obj, "data") and hasattr(target_obj.data, "materials"):
+                if not target_obj.data.materials:
+                    target_obj.data.materials.append(mat)
+                else:
+                    target_obj.data.materials[0] = mat
+                log(f"  Assigned material '{mat.name}' to '{target_obj.name}'")
+            else:
+                log(f"  ASSIGN_MATERIAL warning: material='{mat_ref}' or target='{target_ref}' not resolved in Blender.")
 
         # ---- CREATE_CAMERA ----
         elif op_type == "CREATE_CAMERA":

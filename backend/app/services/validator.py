@@ -133,6 +133,50 @@ class ExecutionGraphValidator:
         elif op in (OperationType.HIDE_OBJECT, OperationType.SHOW_OBJECT):
             pass
 
+        elif op in (OperationType.CREATE_MATERIAL, OperationType.UPDATE_MATERIAL):
+            name = params.get("name")
+            if op == OperationType.CREATE_MATERIAL and (not name or not isinstance(name, str)):
+                return f"Invalid material name at step '{step_id}'. Must be a non-empty string."
+
+            base_color = params.get("base_color")
+            if base_color is not None:
+                if not isinstance(base_color, list) or len(base_color) != 3 or any(not isinstance(c, (int, float)) or c < 0.0 or c > 1.0 for c in base_color):
+                    return f"Invalid base_color at step '{step_id}'. Must be an RGB list of 3 numbers between 0.0 and 1.0."
+
+            metallic = params.get("metallic")
+            if metallic is not None:
+                if not isinstance(metallic, (int, float)) or metallic < 0.0 or metallic > 1.0:
+                    return f"Invalid metallic value '{metallic}' at step '{step_id}'. Must be between 0.0 and 1.0."
+
+            roughness = params.get("roughness")
+            if roughness is not None:
+                if not isinstance(roughness, (int, float)) or roughness < 0.0 or roughness > 1.0:
+                    return f"Invalid roughness value '{roughness}' at step '{step_id}'. Must be between 0.0 and 1.0."
+
+            emission_color = params.get("emission_color")
+            if emission_color is not None:
+                if not isinstance(emission_color, list) or len(emission_color) != 3 or any(not isinstance(c, (int, float)) or c < 0.0 or c > 1.0 for c in emission_color):
+                    return f"Invalid emission_color at step '{step_id}'. Must be an RGB list of 3 numbers between 0.0 and 1.0."
+
+            emission_strength = params.get("emission_strength")
+            if emission_strength is not None:
+                if not isinstance(emission_strength, (int, float)) or emission_strength < 0.0 or emission_strength > 1000.0:
+                    return f"Invalid emission_strength '{emission_strength}' at step '{step_id}'. Must be between 0.0 and 1000.0."
+
+            opacity = params.get("opacity")
+            if opacity is not None:
+                if not isinstance(opacity, (int, float)) or opacity < 0.0 or opacity > 1.0:
+                    return f"Invalid opacity value '{opacity}' at step '{step_id}'. Must be between 0.0 and 1.0."
+
+            alpha_mode = params.get("alpha_mode")
+            if alpha_mode is not None and alpha_mode not in ("OPAQUE", "MASK", "BLEND"):
+                return f"Invalid alpha_mode '{alpha_mode}' at step '{step_id}'. Must be OPAQUE, MASK, or BLEND."
+
+        elif op == OperationType.ASSIGN_MATERIAL:
+            mat_ref = params.get("material_id") or params.get("material_name") or params.get("material")
+            if not mat_ref or not isinstance(mat_ref, str):
+                return f"Invalid material reference at step '{step_id}'. Must specify material_id or material_name."
+
         elif op == OperationType.DELETE_OBJECT:
             # target_name is optional; if omitted, deletes the active object
             pass

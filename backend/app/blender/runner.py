@@ -104,12 +104,27 @@ def generate_fallback_glb(graph: ExecutionGraph, output_path: str) -> bool:
                     scl = params.get("scale", [1.0, 1.0, 1.0])
                     scene_meshes[active_key]["mesh"].apply_scale(scl)
 
-            elif op == OperationType.SET_MATERIAL:
+            elif op in (OperationType.SET_MATERIAL, OperationType.CREATE_MATERIAL, OperationType.UPDATE_MATERIAL):
                 if active_key and active_key in scene_meshes:
-                    hex_c = params.get("color", "#E8B4B8").lstrip('#')
-                    if len(hex_c) == 6:
+                    base_color = params.get("base_color")
+                    if base_color is not None and isinstance(base_color, list) and len(base_color) == 3:
                         scene_meshes[active_key]["color"] = [
-                            int(hex_c[0:2], 16), int(hex_c[2:4], 16), int(hex_c[4:6], 16), 255
+                            int(base_color[0] * 255), int(base_color[1] * 255), int(base_color[2] * 255), int(params.get("opacity", 1.0) * 255)
+                        ]
+                    elif "color" in params:
+                        hex_c = params.get("color", "#E8B4B8").lstrip('#')
+                        if len(hex_c) == 6:
+                            scene_meshes[active_key]["color"] = [
+                                int(hex_c[0:2], 16), int(hex_c[2:4], 16), int(hex_c[4:6], 16), int(params.get("opacity", 1.0) * 255)
+                            ]
+
+            elif op == OperationType.ASSIGN_MATERIAL:
+                target = params.get("target") or params.get("object_id") or params.get("object_name") or active_key
+                if target and target in scene_meshes and "base_color" in params:
+                    base_color = params["base_color"]
+                    if isinstance(base_color, list) and len(base_color) == 3:
+                        scene_meshes[target]["color"] = [
+                            int(base_color[0] * 255), int(base_color[1] * 255), int(base_color[2] * 255), int(params.get("opacity", 1.0) * 255)
                         ]
 
             elif op == OperationType.HIDE_OBJECT:
