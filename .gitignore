@@ -39,6 +39,8 @@ __pycache__/
 *.pyc
 gameforge.db
 *.db
+*.db-wal
+*.db-shm
 .env
 .env.local
 public/exports/*.glb
