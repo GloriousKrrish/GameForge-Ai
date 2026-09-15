@@ -127,153 +127,158 @@ def apply_procedural_animation_to_armature(armature_obj, params):
         log("  Animation warning: Target object is not an Armature.")
         return False
 
-    armature_obj.select_set(True)
-    bpy.context.view_layer.objects.active = armature_obj
-
-    anim_id = params.get("animation_id", "anim_default")
-    preset = params.get("motion_preset") or params.get("animation_type") or "IDLE"
-    speed = float(params.get("speed", 1.0))
-    amp = float(params.get("amplitude", 1.0))
-    duration = float(params.get("duration_seconds", 2.0))
-    fps = int(params.get("fps", 30))
-    frame_start = int(params.get("frame_start", 1))
-    frame_end = int(params.get("frame_end", frame_start + int(duration * fps) - 1))
-
-    total_frames = max(2, frame_end - frame_start + 1)
-    bpy.context.scene.frame_start = frame_start
-    bpy.context.scene.frame_end = frame_end
-    bpy.context.scene.render.fps = fps
-
-    # Action setup
-    action_name = f"GameForge_Action_{preset}_{anim_id}"
     try:
-        action = bpy.data.actions.new(name=action_name)
-    except Exception as exc:
-        log(f"  Warning creating action '{action_name}': {exc}")
-        action = None
+        armature_obj.select_set(True)
+        bpy.context.view_layer.objects.active = armature_obj
 
-    if not armature_obj.animation_data:
-        armature_obj.animation_data_create()
-    if action:
-        armature_obj.animation_data.action = action
+        anim_id = params.get("animation_id", "anim_default")
+        preset = params.get("motion_preset") or params.get("animation_type") or "IDLE"
+        speed = float(params.get("speed", 1.0))
+        amp = float(params.get("amplitude", 1.0))
+        duration = float(params.get("duration_seconds", 2.0))
+        fps = int(params.get("fps", 30))
+        frame_start = int(params.get("frame_start", 1))
+        frame_end = int(params.get("frame_end", frame_start + int(duration * fps) - 1))
 
-    # Map pose bones
-    try:
-        bpy.ops.object.mode_set(mode='POSE')
-    except Exception as exc:
-        log(f"  Warning setting POSE mode: {exc}")
+        total_frames = max(2, frame_end - frame_start + 1)
+        bpy.context.scene.frame_start = frame_start
+        bpy.context.scene.frame_end = frame_end
+        bpy.context.scene.render.fps = fps
 
-    pose_bones = armature_obj.pose.bones
-    for pb in pose_bones:
-        pb.rotation_mode = 'QUATERNION'
+        # Action setup
+        action_name = f"GameForge_Action_{preset}_{anim_id}"
+        try:
+            action = bpy.data.actions.new(name=action_name)
+        except Exception as exc:
+            log(f"  Warning creating action '{action_name}': {exc}")
+            action = None
 
-    for f in range(frame_start, frame_end + 1):
-        bpy.context.scene.frame_set(f)
-        # Normalized frame factor [0..1]
-        progress = (f - frame_start) / max(1, total_frames - 1)
-        t = progress * 2.0 * math.pi * speed
+        if not armature_obj.animation_data:
+            armature_obj.animation_data_create()
+        if action:
+            armature_obj.animation_data.action = action
 
-        # Default bone transforms per frame
+        # Map pose bones
+        try:
+            bpy.ops.object.mode_set(mode='POSE')
+        except Exception as exc:
+            log(f"  Warning setting POSE mode: {exc}")
+
+        pose_bones = armature_obj.pose.bones
         for pb in pose_bones:
-            rx, ry, rz = 0.0, 0.0, 0.0
-            loc_x, loc_y, loc_z = 0.0, 0.0, 0.0
-            name = pb.name
+            pb.rotation_mode = 'QUATERNION'
 
-            if preset == "IDLE":
-                if name in ("Spine", "Chest"):
-                    rx = 0.04 * amp * math.sin(t)
-                    rz = 0.02 * amp * math.cos(0.5 * t)
-                elif name == "Head":
-                    ry = 0.03 * amp * math.sin(0.5 * t)
-                elif name == "LeftArm":
-                    rz = -0.1 * amp + 0.02 * amp * math.sin(t)
-                elif name == "RightArm":
-                    rz = 0.1 * amp - 0.02 * amp * math.sin(t)
+        for f in range(frame_start, frame_end + 1):
+            bpy.context.scene.frame_set(f)
+            # Normalized frame factor [0..1]
+            progress = (f - frame_start) / max(1, total_frames - 1)
+            t = progress * 2.0 * math.pi * speed
 
-            elif preset == "WALK":
-                if name == "LeftLeg":
-                    rx = 0.35 * amp * math.sin(t)
-                elif name == "RightLeg":
-                    rx = -0.35 * amp * math.sin(t)
-                elif name == "LeftArm":
-                    rx = -0.25 * amp * math.sin(t)
-                elif name == "RightArm":
-                    rx = 0.25 * amp * math.sin(t)
-                elif name == "Spine":
-                    rz = 0.05 * amp * math.sin(t)
-                elif name == "Root":
-                    loc_z = 0.03 * amp * abs(math.sin(t))
+            # Default bone transforms per frame
+            for pb in pose_bones:
+                rx, ry, rz = 0.0, 0.0, 0.0
+                loc_x, loc_y, loc_z = 0.0, 0.0, 0.0
+                name = pb.name
 
-            elif preset == "RUN":
-                if name == "LeftLeg":
-                    rx = 0.6 * amp * math.sin(t)
-                elif name == "RightLeg":
-                    rx = -0.6 * amp * math.sin(t)
-                elif name == "LeftArm":
-                    rx = -0.45 * amp * math.sin(t)
-                elif name == "RightArm":
-                    rx = 0.45 * amp * math.sin(t)
-                elif name in ("Spine", "Chest"):
-                    rx = 0.1 * amp
-                    rz = 0.08 * amp * math.sin(t)
-                elif name == "Root":
-                    loc_z = 0.08 * amp * abs(math.sin(t))
+                if preset == "IDLE":
+                    if name in ("Spine", "Chest"):
+                        rx = 0.04 * amp * math.sin(t)
+                        rz = 0.02 * amp * math.cos(0.5 * t)
+                    elif name == "Head":
+                        ry = 0.03 * amp * math.sin(0.5 * t)
+                    elif name == "LeftArm":
+                        rz = -0.1 * amp + 0.02 * amp * math.sin(t)
+                    elif name == "RightArm":
+                        rz = 0.1 * amp - 0.02 * amp * math.sin(t)
 
-            elif preset == "WAVE":
-                if name == "RightArm":
-                    rx = 1.1 * amp
-                    rz = 0.4 * amp
-                    ry = 0.35 * amp * math.sin(2.0 * t)
-                elif name in ("Chest", "Neck"):
-                    rz = 0.05 * amp * math.sin(t)
-
-            elif preset == "JUMP":
-                if progress < 0.2:  # Crouch
-                    c_phase = math.sin(math.pi * (progress / 0.2))
-                    if name in ("LeftLeg", "RightLeg"):
-                        rx = 0.3 * amp * c_phase
+                elif preset == "WALK":
+                    if name == "LeftLeg":
+                        rx = 0.35 * amp * math.sin(t)
+                    elif name == "RightLeg":
+                        rx = -0.35 * amp * math.sin(t)
+                    elif name == "LeftArm":
+                        rx = -0.25 * amp * math.sin(t)
+                    elif name == "RightArm":
+                        rx = 0.25 * amp * math.sin(t)
                     elif name == "Spine":
-                        rx = -0.15 * amp * c_phase
+                        rz = 0.05 * amp * math.sin(t)
                     elif name == "Root":
-                        loc_z = -0.15 * amp * c_phase
-                elif progress < 0.7:  # Airborne
-                    a_phase = math.sin(math.pi * ((progress - 0.2) / 0.5))
-                    if name == "Root":
-                        loc_z = 0.4 * amp * a_phase
-                    elif name in ("LeftArm", "RightArm"):
-                        rx = -0.4 * amp * a_phase
-                    elif name in ("LeftLeg", "RightLeg"):
-                        rx = -0.1 * amp * a_phase
-                elif progress < 0.9:  # Landing
-                    l_phase = math.sin(math.pi * ((progress - 0.7) / 0.2))
-                    if name in ("LeftLeg", "RightLeg"):
-                        rx = 0.2 * amp * l_phase
+                        loc_z = 0.03 * amp * abs(math.sin(t))
+
+                elif preset == "RUN":
+                    if name == "LeftLeg":
+                        rx = 0.6 * amp * math.sin(t)
+                    elif name == "RightLeg":
+                        rx = -0.6 * amp * math.sin(t)
+                    elif name == "LeftArm":
+                        rx = -0.45 * amp * math.sin(t)
+                    elif name == "RightArm":
+                        rx = 0.45 * amp * math.sin(t)
+                    elif name in ("Spine", "Chest"):
+                        rx = 0.1 * amp
+                        rz = 0.08 * amp * math.sin(t)
                     elif name == "Root":
-                        loc_z = -0.1 * amp * l_phase
+                        loc_z = 0.08 * amp * abs(math.sin(t))
 
-            try:
-                q = mathutils.Euler((rx, ry, rz), 'XYZ').to_quaternion()
-                pb.rotation_quaternion = q
-                pb.keyframe_insert(data_path="rotation_quaternion", frame=f)
-            except Exception as exc:
-                log(f"  Warning keyframing rotation for bone {pb.name} at frame {f}: {exc}")
+                elif preset == "WAVE":
+                    if name == "RightArm":
+                        rx = 1.1 * amp
+                        rz = 0.4 * amp
+                        ry = 0.35 * amp * math.sin(2.0 * t)
+                    elif name in ("Chest", "Neck"):
+                        rz = 0.05 * amp * math.sin(t)
 
-            if loc_x != 0.0 or loc_y != 0.0 or loc_z != 0.0:
+                elif preset == "JUMP":
+                    if progress < 0.2:  # Crouch
+                        c_phase = math.sin(math.pi * (progress / 0.2))
+                        if name in ("LeftLeg", "RightLeg"):
+                            rx = 0.3 * amp * c_phase
+                        elif name == "Spine":
+                            rx = -0.15 * amp * c_phase
+                        elif name == "Root":
+                            loc_z = -0.15 * amp * c_phase
+                    elif progress < 0.7:  # Airborne
+                        a_phase = math.sin(math.pi * ((progress - 0.2) / 0.5))
+                        if name == "Root":
+                            loc_z = 0.4 * amp * a_phase
+                        elif name in ("LeftArm", "RightArm"):
+                            rx = -0.4 * amp * a_phase
+                        elif name in ("LeftLeg", "RightLeg"):
+                            rx = -0.1 * amp * a_phase
+                    elif progress < 0.9:  # Landing
+                        l_phase = math.sin(math.pi * ((progress - 0.7) / 0.2))
+                        if name in ("LeftLeg", "RightLeg"):
+                            rx = 0.2 * amp * l_phase
+                        elif name == "Root":
+                            loc_z = -0.1 * amp * l_phase
+
                 try:
-                    pb.location = (loc_x, loc_y, loc_z)
-                    pb.keyframe_insert(data_path="location", frame=f)
+                    q = mathutils.Euler((rx, ry, rz), 'XYZ').to_quaternion()
+                    pb.rotation_quaternion = q
+                    pb.keyframe_insert(data_path="rotation_quaternion", frame=f)
                 except Exception as exc:
-                    log(f"  Warning keyframing location for bone {pb.name} at frame {f}: {exc}")
+                    log(f"  Warning keyframing rotation for bone {pb.name} at frame {f}: {exc}")
 
-    try:
-        bpy.ops.object.mode_set(mode='OBJECT')
-    except Exception:
-        pass
+                if loc_x != 0.0 or loc_y != 0.0 or loc_z != 0.0:
+                    try:
+                        pb.location = (loc_x, loc_y, loc_z)
+                        pb.keyframe_insert(data_path="location", frame=f)
+                    except Exception as exc:
+                        log(f"  Warning keyframing location for bone {pb.name} at frame {f}: {exc}")
 
-    fcurves_count = len(action.fcurves) if action else 0
-    keyframes_count = sum(len(fc.keyframe_points) for fc in action.fcurves) if action else 0
-    log(f"  Applied procedural animation '{preset}' to armature '{armature_obj.name}': Action '{action_name}' ({fcurves_count} F-curves, {keyframes_count} keyframes).")
-    return fcurves_count > 0
+        try:
+            bpy.ops.object.mode_set(mode='OBJECT')
+        except Exception:
+            pass
+
+        fcurves_count = len(action.fcurves) if action else 0
+        keyframes_count = sum(len(fc.keyframe_points) for fc in action.fcurves) if action else 0
+        log(f"  Applied procedural animation '{preset}' to armature '{armature_obj.name}': Action '{action_name}' ({fcurves_count} F-curves, {keyframes_count} keyframes).")
+        return fcurves_count > 0
+
+    except Exception as exc:
+        log(f"  ERROR in apply_procedural_animation_to_armature: {exc}\n{traceback.format_exc()}")
+        raise exc
 
 
 def execute_graph(payload_json: str):
