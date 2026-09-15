@@ -463,7 +463,7 @@ export function Sidebar() {
                         {/* Details */}
                         <div className="flex items-center justify-between text-[10px] text-muted-foreground">
                           <span>Tris: {asset.triangle_count ?? 0}</span>
-                          <span>Format: {asset.format.toUpperCase()}</span>
+                          <span>Format: {(asset.format || 'glb').toUpperCase()}</span>
                           <span className="uppercase text-gold-soft font-semibold">{asset.status}</span>
                         </div>
 
