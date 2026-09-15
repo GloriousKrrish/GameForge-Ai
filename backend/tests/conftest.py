@@ -13,4 +13,7 @@ def reset_db():
         conn.execute("DELETE FROM projects")
         conn.execute("DELETE FROM assets")
         conn.execute("DELETE FROM jobs")
+        conn.execute("DELETE FROM characters")
+        conn.execute("DELETE FROM skeletons")
+        conn.execute("DELETE FROM rigs")
     yield

@@ -1,24 +1,31 @@
-# Pixel Perfect Display
+# GameForge AI — Generative 3D Game Engine Platform
 
-Implement exactly the screenshot and nothing else
+GameForge AI is an end-to-end generative 3D engine platform powered by AI planning, controlled execution graphs, headless Blender rigging pipelines, PBR material creation, and real-time Three.js viewport visualization.
 
-This project was built with [Lovable](https://lovable.dev).
+## Phase 5 — Characters & Rigging Pipeline
 
-## Build with Lovable
+Phase 5 establishes a complete, persistent, animation-ready character foundation:
 
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/1d1d3e04-b269-4292-832f-85af31d09da1).
+- **Character Domain**: Asset-linked character management, classifications (`HUMANOID`, `QUADRUPED`, `CREATURE`, `CUSTOM`), and lifecycle state machine (`UNCLASSIFIED` → `CLASSIFIED` → `RIGGING` → `RIGGED` → `SKINNING` → `READY`).
+- **Skeleton & Bone Hierarchy**: Deterministic 9-bone humanoid hierarchy with stable bone IDs (`Root`, `Spine`, `Chest`, `Neck`, `Head`, `LeftArm`, `RightArm`, `LeftLeg`, `RightLeg`) and cycle rejection.
+- **Headless Blender Rigging**: Controlled BPY execution graph dispatches to system Blender CLI (e.g. Blender 5.2) to create armatures, bind meshes via `ARMATURE` modifiers, calculate distance-weighted vertex groups, and export rigged `.glb` artifacts.
+- **GLB Binary Inspection & Weight Validation**: Automated glTF 2.0 container inspection (`glb_inspector.py`) and strict vertex weight normalization validation ($\sum w_i \approx 1.0$).
+- **Character UI & Rig Overlay**: Integrated Character Library subtab, PropertiesPanel Character Inspector, and Three.js 3D viewport skeleton bone overlay.
 
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
+## Development & Testing
 
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
-
+### Python Backend & Suite
 ```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
+# Run pytest backend test suite (78 tests)
+python -m pytest backend/tests -v
 ```
+
+### Frontend Web Application
+```sh
+# Run dev server
+npm run dev
+
+# Production build
+npm run build
+```
+

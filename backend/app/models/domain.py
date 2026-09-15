@@ -38,6 +38,29 @@ class AssetStatus(str, Enum):
     FAILED = "FAILED"
 
 
+class CharacterType(str, Enum):
+    HUMANOID = "HUMANOID"
+    QUADRUPED = "QUADRUPED"
+    CREATURE = "CREATURE"
+    CUSTOM = "CUSTOM"
+
+
+class CharacterStatus(str, Enum):
+    UNCLASSIFIED = "UNCLASSIFIED"
+    CLASSIFIED = "CLASSIFIED"
+    RIGGING = "RIGGING"
+    RIGGED = "RIGGED"
+    SKINNING = "SKINNING"
+    READY = "READY"
+    FAILED = "FAILED"
+
+
+class RigType(str, Enum):
+    HUMANOID = "HUMANOID"
+    GENERIC = "GENERIC"
+    CUSTOM = "CUSTOM"
+
+
 class AssetModel(BaseModel):
     id: str
     project_id: str = "proj_default"
@@ -59,6 +82,82 @@ class AssetModel(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+class BoneModel(BaseModel):
+    id: str
+    skeleton_id: str
+    name: str
+    parent_id: Optional[str] = None
+    head: List[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
+    tail: List[float] = Field(default_factory=lambda: [0.0, 1.0, 0.0])
+    local_rotation: List[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
+    local_scale: List[float] = Field(default_factory=lambda: [1.0, 1.0, 1.0])
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class SkeletonModel(BaseModel):
+    id: str
+    character_id: str
+    name: str
+    root_bone_id: str
+    bone_count: int = 0
+    skeleton_type: RigType = RigType.GENERIC
+    bones: List[BoneModel] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+class RigModel(BaseModel):
+    id: str
+    character_id: str
+    skeleton_id: str
+    rig_type: RigType
+    status: CharacterStatus = CharacterStatus.RIGGED
+    blender_object_name: Optional[str] = None
+    provider: str = "DETERMINISTIC_TEST_RIGGING"
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+class SkinningModel(BaseModel):
+    skeleton_id: str
+    vertex_count: int = 0
+    max_influences_per_vertex: int = 4
+    influences: Dict[str, List[Dict[str, Any]]] = Field(default_factory=dict)
+    status: str = "VALID"
+
+
+class CharacterModel(BaseModel):
+    id: str
+    project_id: str = "proj_default"
+    asset_id: str
+    name: str
+    character_type: CharacterType = CharacterType.CUSTOM
+    status: CharacterStatus = CharacterStatus.UNCLASSIFIED
+    rig_id: Optional[str] = None
+    skeleton_id: Optional[str] = None
+    skinning: Optional[SkinningModel] = None
+    scene_object_ids: List[str] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+class CharacterCreateRequest(BaseModel):
+    asset_id: str
+    name: str
+    character_type: CharacterType = CharacterType.CUSTOM
+    project_id: str = "proj_default"
+
+
+class RigCharacterRequest(BaseModel):
+    rig_type: RigType = RigType.HUMANOID
+    auto_weight: bool = True
+    preserve_materials: bool = True
+    preserve_transforms: bool = True
 
 
 class Texture(BaseModel):
@@ -232,6 +331,13 @@ class AssetGenerationRequest(BaseModel):
 
 class InstantiateAssetRequest(BaseModel):
     asset_id: str
+    name: Optional[str] = None
+    position: Optional[List[float]] = None
+    rotation: Optional[List[float]] = None
+    scale: Optional[List[float]] = None
+
+
+class InstantiateCharacterRequest(BaseModel):
     name: Optional[str] = None
     position: Optional[List[float]] = None
     rotation: Optional[List[float]] = None

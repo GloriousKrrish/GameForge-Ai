@@ -192,6 +192,31 @@ class ExecutionGraphValidator:
             if not asset_ref or not isinstance(asset_ref, str):
                 return f"Invalid asset reference at step '{step_id}'. Must specify asset_id or asset_name."
 
+        elif op == OperationType.CREATE_CHARACTER:
+            for field in ("asset_id", "name"):
+                if not isinstance(params.get(field), str) or not params[field].strip():
+                    return f"Invalid character {field} at step '{step_id}'. Must be a non-empty string."
+        elif op == OperationType.CLASSIFY_CHARACTER:
+            if params.get("character_type") not in ("HUMANOID", "QUADRUPED", "CREATURE", "CUSTOM"):
+                return f"Invalid character_type at step '{step_id}'."
+        elif op in (OperationType.CREATE_RIG, OperationType.RIG_CHARACTER):
+            if params.get("character_id") is not None and not isinstance(params["character_id"], str):
+                return f"Invalid character_id at step '{step_id}'."
+            if params.get("rig_type", "HUMANOID") not in ("HUMANOID", "GENERIC", "CUSTOM"):
+                return f"Invalid rig_type at step '{step_id}'."
+        elif op == OperationType.CREATE_SKELETON:
+            if not isinstance(params.get("character_id"), str):
+                return f"Invalid character_id at step '{step_id}'."
+        elif op == OperationType.SKIN_CHARACTER:
+            if not isinstance(params.get("character_id"), str):
+                return f"Invalid character_id at step '{step_id}'."
+            max_influences = params.get("max_influences_per_vertex", 4)
+            if not isinstance(max_influences, int) or max_influences < 1 or max_influences > 8:
+                return f"Invalid max_influences_per_vertex at step '{step_id}'."
+        elif op == OperationType.VALIDATE_CHARACTER:
+            if not isinstance(params.get("character_id"), str):
+                return f"Invalid character_id at step '{step_id}'."
+
         elif op == OperationType.DELETE_OBJECT:
             # target_name is optional; if omitted, deletes the active object
             pass

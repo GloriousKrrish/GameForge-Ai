@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { Asset, GenerationJob } from "@/types/gameforge";
+import type { CharacterData } from "@/api/characters";
 
 interface GameForgeState {
   selectedAsset: Asset | null;
@@ -33,10 +34,21 @@ interface GameForgeState {
 
   materialsList: any[];
   assetsList: any[];
+  charactersList: CharacterData[];
+  selectedCharacter: CharacterData | null;
+  activeSkeleton: any | null;
+  isRigVisualized: boolean;
+  selectedBoneId: string | null;
+
   setSelectedObjectId: (id: string | null) => void;
   setActiveSceneData: (data: any) => void;
   setMaterialsList: (materials: any[]) => void;
   setAssetsList: (assets: any[]) => void;
+  setCharactersList: (characters: CharacterData[]) => void;
+  setSelectedCharacter: (character: CharacterData | null) => void;
+  setActiveSkeleton: (skeleton: any | null) => void;
+  setIsRigVisualized: (visualized: boolean) => void;
+  setSelectedBoneId: (boneId: string | null) => void;
   setSelectedObject: (obj: {
     name: string;
     position: [number, number, number];
@@ -76,8 +88,19 @@ export const useGameForgeStore = create<GameForgeState>((set) => ({
   activeSceneData: null,
   materialsList: [],
   assetsList: [],
+  charactersList: [],
+  selectedCharacter: null,
+  activeSkeleton: null,
+  isRigVisualized: false,
+  selectedBoneId: null,
+
   setMaterialsList: (materialsList) => set({ materialsList }),
   setAssetsList: (assetsList) => set({ assetsList }),
+  setCharactersList: (charactersList) => set({ charactersList }),
+  setSelectedCharacter: (selectedCharacter) => set({ selectedCharacter }),
+  setActiveSkeleton: (activeSkeleton) => set({ activeSkeleton }),
+  setIsRigVisualized: (isRigVisualized) => set({ isRigVisualized }),
+  setSelectedBoneId: (selectedBoneId) => set({ selectedBoneId }),
 
   selectedObject: {
     name: "GameForge_Cube",

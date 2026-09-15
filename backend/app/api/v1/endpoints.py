@@ -19,9 +19,14 @@ from app.services.job_manager import job_manager
 from app.services.asset_manager import asset_manager
 from app.execution.engine import ExecutionEngine
 from app.db.repositories import SceneRepository, MaterialRepository
-from app.models.domain import Material, MaterialCreateRequest, MaterialUpdateRequest, AssignMaterialRequest, AssetGenerationRequest, InstantiateAssetRequest, AssetModel
+from app.models.domain import (
+    Material, MaterialCreateRequest, MaterialUpdateRequest, AssignMaterialRequest,
+    AssetGenerationRequest, InstantiateAssetRequest, AssetModel, CharacterCreateRequest,
+    RigCharacterRequest, InstantiateCharacterRequest,
+)
 from app.providers.adapter import provider_adapter
 from app.services.asset_validator import AssetValidator, AssetNormalizer
+from app.services.character_manager import CharacterValidationError, character_manager
 
 logger = logging.getLogger("gameforge.api")
 
@@ -31,6 +36,118 @@ router = APIRouter()
 PUBLIC_EXPORTS_DIR = Path(__file__).resolve().parents[4] / "public" / "exports"
 
 execution_engine = ExecutionEngine(exports_dir=PUBLIC_EXPORTS_DIR)
+
+
+# ---------------------------------------------------------------------------
+# Characters, rigs, skeletons, and skinning (Phase 5)
+# ---------------------------------------------------------------------------
+@router.get("/characters")
+async def list_characters(project_id: str = "proj_default"):
+    return character_manager.list_characters(project_id)
+
+
+@router.post("/characters", status_code=status.HTTP_201_CREATED)
+async def create_character(req: CharacterCreateRequest):
+    asset = asset_manager.get_asset(req.asset_id)
+    if not asset:
+        raise HTTPException(status_code=404, detail=f"Asset '{req.asset_id}' not found.")
+    if asset.project_id != req.project_id:
+        raise HTTPException(status_code=403, detail="Asset and character must belong to the same project.")
+    return character_manager.create_character(asset, req.name, req.character_type)
+
+
+@router.get("/characters/{character_id}")
+async def get_character(character_id: str):
+    character = character_manager.get_character(character_id)
+    if not character:
+        raise HTTPException(status_code=404, detail=f"Character '{character_id}' not found.")
+    return character
+
+
+@router.post("/characters/{character_id}/rig")
+async def rig_character(character_id: str, req: RigCharacterRequest):
+    character = character_manager.get_character(character_id)
+    if not character:
+        raise HTTPException(status_code=404, detail=f"Character '{character_id}' not found.")
+    try:
+        updated, rig, skeleton = character_manager.rig_character(character, req)
+    except CharacterValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"character": updated, "rig": rig, "skeleton": skeleton}
+
+
+@router.get("/characters/{character_id}/skeleton")
+async def get_character_skeleton(character_id: str):
+    if not character_manager.get_character(character_id):
+        raise HTTPException(status_code=404, detail=f"Character '{character_id}' not found.")
+    skeleton = character_manager.get_skeleton(character_id)
+    if not skeleton:
+        raise HTTPException(status_code=404, detail=f"Skeleton for character '{character_id}' not found.")
+    return skeleton
+
+
+@router.get("/characters/{character_id}/rig")
+async def get_character_rig(character_id: str):
+    if not character_manager.get_character(character_id):
+        raise HTTPException(status_code=404, detail=f"Character '{character_id}' not found.")
+    rig = character_manager.get_rig(character_id)
+    if not rig:
+        raise HTTPException(status_code=404, detail=f"Rig for character '{character_id}' not found.")
+    return rig
+
+
+@router.post("/characters/{character_id}/instantiate")
+async def instantiate_character(character_id: str, req: InstantiateCharacterRequest):
+    character = character_manager.get_character(character_id)
+    if not character:
+        raise HTTPException(status_code=404, detail=f"Character '{character_id}' not found.")
+    asset = asset_manager.get_asset(character.asset_id)
+    if not asset:
+        raise HTTPException(status_code=422, detail="Character underlying asset is unavailable.")
+    scene = SceneRepository.get_or_create_default_scene()
+    from app.models.domain import SceneObject, TransformModel, MaterialModel
+    object_id = f"obj_{uuid.uuid4().hex[:8]}"
+    scene_object = SceneObject(
+        id=object_id,
+        name=req.name or character.name,
+        object_type="CHARACTER",
+        transform=TransformModel(position=req.position or [0.0, 0.0, 0.0], rotation=req.rotation or [0.0, 0.0, 0.0], scale=req.scale or [1.0, 1.0, 1.0]),
+        properties={"character_id": character.id, "asset_id": asset.id, "glb_url": asset.glb_url},
+        material=MaterialModel(),
+    )
+    scene.objects.append(scene_object)
+    scene.active_asset_url = asset.glb_url
+    character.scene_object_ids.append(object_id)
+    character_manager.save_character(character)
+    updated_scene = SceneRepository.save_scene(scene)
+    return {"success": True, "scene": updated_scene, "instantiated_object": scene_object, "glb_url": asset.glb_url}
+
+
+@router.delete("/characters/{character_id}")
+async def delete_character(character_id: str):
+    if not character_manager.delete_character(character_id):
+        raise HTTPException(status_code=404, detail=f"Character '{character_id}' not found.")
+    return {"success": True}
+
+
+@router.get("/characters/{character_id}/inspect_glb")
+async def inspect_character_glb(character_id: str):
+    character = character_manager.get_character(character_id)
+    if not character:
+        raise HTTPException(status_code=404, detail=f"Character '{character_id}' not found.")
+    asset = asset_manager.get_asset(character.asset_id)
+    if not asset or not asset.glb_url:
+        raise HTTPException(status_code=404, detail="Character asset GLB unavailable.")
+
+    local_path = PUBLIC_EXPORTS_DIR / asset.glb_url.replace("/exports/", "").lstrip("/")
+    if not local_path.exists():
+        raise HTTPException(status_code=404, detail=f"GLB file '{local_path.name}' not found on disk.")
+
+    from app.services.glb_inspector import glb_inspector, GLBInspectorError
+    try:
+        return glb_inspector.inspect(str(local_path))
+    except GLBInspectorError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------

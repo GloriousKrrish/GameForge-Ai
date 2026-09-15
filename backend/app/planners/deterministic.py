@@ -21,6 +21,43 @@ class DeterministicPlanner(BasePlanner):
         steps: List[ExecutionStep] = []
         step_idx = 1
 
+        import re
+        is_rigging_request = any(re.search(rf"\b{re.escape(term)}\b", p_lower) for term in ("rig", "rigged", "rigging", "skeleton", "animation-ready", "animation ready"))
+        if is_rigging_request:
+            characters = (scene_context or {}).get("characters", [])
+            target_character = next(
+                (item for item in characters if item.get("id") and item.get("name", "").lower() in p_lower),
+                None,
+            )
+            if target_character:
+                steps.append(ExecutionStep(
+                    id=f"step_{step_idx}", type=OperationType.RIG_CHARACTER,
+                    status=StepStatus.PENDING,
+                    parameters={"character_id": target_character["id"], "rig_type": "HUMANOID"},
+                ))
+                step_idx += 1
+            else:
+                steps.append(ExecutionStep(
+                    id=f"step_{step_idx}", type=OperationType.CREATE_CHARACTER,
+                    status=StepStatus.PENDING,
+                    parameters={"asset_id": "resolve_from_context", "name": "Generated Character"},
+                ))
+                step_idx += 1
+            steps.append(ExecutionStep(
+                id=f"step_{step_idx}", type=OperationType.VALIDATE_CHARACTER,
+                status=StepStatus.PENDING,
+                parameters={"character_id": target_character["id"] if target_character else "resolve_from_context"},
+            ))
+            step_idx += 1
+            steps.append(ExecutionStep(
+                id=f"step_{step_idx}", type=OperationType.EXPORT_GLB,
+                status=StepStatus.PENDING, parameters={},
+            ))
+            return ExecutionGraph(
+                id=f"graph_{uuid.uuid4().hex[:8]}", version="1.0", steps=steps,
+                metadata={"prompt": prompt, "planner": "deterministic", "intent": "CHARACTER_RIGGING"},
+            )
+
         # Check scene_context for existing objects
         existing_objects = scene_context.get("objects", []) if scene_context else []
         target_obj = None

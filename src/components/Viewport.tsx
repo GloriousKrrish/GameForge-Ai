@@ -1,22 +1,91 @@
-import { Box, Grid3x3, RotateCcw, Loader2 } from "lucide-react";
+import { Box, Grid3x3, RotateCcw, Loader2, Activity } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { useGameForgeStore } from "@/store/useGameForgeStore";
 
+// ── Rig Bone Overlay Helpers ──────────────────────────────────────────────────
+
+interface BoneData {
+  id: string;
+  name: string;
+  parent_id?: string | null;
+  head: number[];
+  tail: number[];
+}
+
+function buildRigOverlay(bones: BoneData[], scene: THREE.Scene): THREE.LineSegments {
+  const positions: number[] = [];
+  const boneById: Record<string, BoneData> = {};
+  for (const b of bones) boneById[b.id] = b;
+
+  for (const bone of bones) {
+    // Head → Tail (the bone stick)
+    positions.push(...bone.head, ...bone.tail);
+    // Tail of parent → Head of child (connector)
+    if (bone.parent_id && boneById[bone.parent_id]) {
+      const parent = boneById[bone.parent_id];
+      positions.push(...parent.tail, ...bone.head);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+
+  const material = new THREE.LineBasicMaterial({
+    color: 0xd4a853,        // gold
+    linewidth: 2,
+    depthTest: false,
+    transparent: true,
+    opacity: 0.85,
+  });
+
+  const overlay = new THREE.LineSegments(geometry, material);
+  overlay.name = "__rig_overlay__";
+  overlay.renderOrder = 999;
+  scene.add(overlay);
+  return overlay;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function Viewport() {
   const [mode, setMode] = useState<"shaded" | "wireframe">("shaded");
   const containerRef = useRef<HTMLDivElement>(null);
-  
+
   const activeAssetUrl = useGameForgeStore((s) => s.activeAssetUrl);
   const generationStatus = useGameForgeStore((s) => s.generationStatus);
   const objectStats = useGameForgeStore((s) => s.objectStats);
   const setObjectStats = useGameForgeStore((s) => s.setObjectStats);
   const errorMessage = useGameForgeStore((s) => s.errorMessage);
+  const activeSkeleton = useGameForgeStore((s) => s.activeSkeleton);
+  const isRigVisualized = useGameForgeStore((s) => s.isRigVisualized);
+  const setIsRigVisualized = useGameForgeStore((s) => s.setIsRigVisualized);
 
   const controlsRef = useRef<OrbitControls | null>(null);
   const loadedModelRef = useRef<THREE.Group | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const rigOverlayRef = useRef<THREE.LineSegments | null>(null);
+
+  // ── Rig overlay: add / remove when isRigVisualized or activeSkeleton changes ──
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    // Remove existing overlay first
+    if (rigOverlayRef.current) {
+      scene.remove(rigOverlayRef.current);
+      rigOverlayRef.current.geometry.dispose();
+      (rigOverlayRef.current.material as THREE.Material).dispose();
+      rigOverlayRef.current = null;
+    }
+
+    if (isRigVisualized && activeSkeleton?.bones?.length) {
+      const overlay = buildRigOverlay(activeSkeleton.bones as BoneData[], scene);
+      rigOverlayRef.current = overlay;
+    }
+  }, [isRigVisualized, activeSkeleton]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -25,6 +94,7 @@ export function Viewport() {
     // 1. Setup Scene, Camera, Renderer
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0a0c10);
+    sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(
       45,
@@ -71,7 +141,6 @@ export function Viewport() {
     // 5. Load GLB Asset if available
     if (activeAssetUrl) {
       const loader = new GLTFLoader();
-      // Handle relative vs absolute backend URLs
       const targetUrl = activeAssetUrl.startsWith("http")
         ? activeAssetUrl
         : `http://localhost:8000${activeAssetUrl}`;
@@ -154,6 +223,7 @@ export function Viewport() {
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener("resize", handleResize);
       renderer.dispose();
+      sceneRef.current = null;
     };
   }, [activeAssetUrl, mode, setObjectStats]);
 
@@ -180,6 +250,20 @@ export function Viewport() {
               {m}
             </button>
           ))}
+          {/* Rig Visualize Toggle */}
+          <button
+            onClick={() => setIsRigVisualized(!isRigVisualized)}
+            id="btn-viewport-rig-vis"
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs transition-colors ${
+              isRigVisualized
+                ? "bg-gold/10 text-gold"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            title={isRigVisualized ? "Hide Rig Overlay" : "Show Rig Overlay"}
+          >
+            <Activity className="size-3.5" />
+            Rig
+          </button>
         </div>
         <button
           onClick={handleResetCamera}
@@ -224,6 +308,14 @@ export function Viewport() {
           </div>
         )}
 
+        {/* Rig Overlay Active Badge */}
+        {isRigVisualized && (
+          <div className="pointer-events-none absolute top-3 right-4 z-10 flex items-center gap-1.5 rounded-full border border-gold/40 bg-gold/10 px-2.5 py-1 text-[10px] font-semibold text-gold backdrop-blur-sm">
+            <Activity className="size-3" />
+            Rig Overlay Active
+          </div>
+        )}
+
         {/* Bottom Bar Info */}
         <div className="pointer-events-none absolute bottom-3 left-4 flex items-center gap-2 text-[11px] text-muted-foreground">
           <Grid3x3 className="size-3.5" />
@@ -236,3 +328,4 @@ export function Viewport() {
     </section>
   );
 }
+

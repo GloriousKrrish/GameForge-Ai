@@ -44,3 +44,4 @@ gameforge.db
 .env
 .env.local
 public/exports/*.glb
+backend/public/exports/*.glb

@@ -13,6 +13,11 @@ import os
 import sys
 
 
+def log(msg: str) -> None:
+    """Print a log message to stdout so the runner can capture it."""
+    print(f"[GameForge BPY] {msg}", flush=True)
+
+
 def hex_to_rgb(hex_str: str):
     """Convert hex color string to RGBA tuple (0.0-1.0)."""
     hex_str = hex_str.lstrip('#')
@@ -24,8 +29,92 @@ def hex_to_rgb(hex_str: str):
     return (0.8, 0.8, 0.8, 1.0)
 
 
-def log(msg: str):
-    print(f"[GameForge BPY] {msg}")
+def create_humanoid_armature(armature_name="GameForge_Armature", rig_name="GameForge_Humanoid_Rig"):
+    import bpy
+    armature_data = bpy.data.armatures.new(armature_name)
+    armature_obj = bpy.data.objects.new(rig_name, armature_data)
+    bpy.context.scene.collection.objects.link(armature_obj)
+    bpy.context.view_layer.objects.active = armature_obj
+
+    bpy.ops.object.mode_set(mode='EDIT')
+    edit_bones = armature_data.edit_bones
+
+    bone_defs = [
+        ("Root", (0.0, 0.0, 0.0), (0.0, 0.0, 0.2), None),
+        ("Spine", (0.0, 0.0, 0.2), (0.0, 0.0, 0.8), "Root"),
+        ("Chest", (0.0, 0.0, 0.8), (0.0, 0.0, 1.3), "Spine"),
+        ("Neck", (0.0, 0.0, 1.3), (0.0, 0.0, 1.5), "Chest"),
+        ("Head", (0.0, 0.0, 1.5), (0.0, 0.0, 1.8), "Neck"),
+        ("LeftArm", (0.2, 0.0, 1.2), (0.7, 0.0, 1.2), "Chest"),
+        ("RightArm", (-0.2, 0.0, 1.2), (-0.7, 0.0, 1.2), "Chest"),
+        ("LeftLeg", (0.2, 0.0, 0.8), (0.2, 0.0, 0.0), "Root"),
+        ("RightLeg", (-0.2, 0.0, 0.8), (-0.2, 0.0, 0.0), "Root"),
+    ]
+
+    created_bones = {}
+    for name, head, tail, parent_name in bone_defs:
+        b = edit_bones.new(name)
+        b.head = head
+        b.tail = tail
+        if parent_name and parent_name in created_bones:
+            b.parent = created_bones[parent_name]
+        created_bones[name] = b
+
+    bpy.ops.object.mode_set(mode='OBJECT')
+    log(f"  Created Blender Armature '{rig_name}' with {len(bone_defs)} bones.")
+    return armature_obj
+
+
+def skin_mesh_to_armature(mesh_obj, armature_obj, max_influences=4):
+    import bpy
+    import math
+
+    if not mesh_obj or mesh_obj.type != 'MESH':
+        log("  Skinning warning: Target object is not a mesh.")
+        return False
+
+    mod_name = "GameForge_Armature_Modifier"
+    mod = mesh_obj.modifiers.get(mod_name)
+    if not mod:
+        mod = mesh_obj.modifiers.new(name=mod_name, type='ARMATURE')
+    mod.object = armature_obj
+
+    bone_positions = {}
+    for bone in armature_obj.data.bones:
+        v = (bone.head_local + bone.tail_local) / 2.0
+        bone_positions[bone.name] = (v.x, v.y, v.z)
+
+    vg_map = {}
+    for bone_name in bone_positions:
+        vg = mesh_obj.vertex_groups.get(bone_name)
+        if not vg:
+            vg = mesh_obj.vertex_groups.new(name=bone_name)
+        vg_map[bone_name] = vg
+
+    mesh_data = mesh_obj.data
+    for v in mesh_data.vertices:
+        co = v.co
+        distances = []
+        for b_name, b_pos in bone_positions.items():
+            dist = math.sqrt((co.x - b_pos[0])**2 + (co.y - b_pos[1])**2 + (co.z - b_pos[2])**2)
+            distances.append((dist, b_name))
+
+        distances.sort(key=lambda x: x[0])
+        top_influences = distances[:max_influences]
+
+        weights = []
+        inv_sum = 0.0
+        for dist, b_name in top_influences:
+            w = 1.0 / (dist + 1e-4)
+            weights.append((b_name, w))
+            inv_sum += w
+
+        for b_name, w in weights:
+            norm_w = w / inv_sum
+            vg_map[b_name].add([v.index], norm_w, 'REPLACE')
+
+    log(f"  Bound mesh '{mesh_obj.name}' ({len(mesh_data.vertices)} vertices) to armature '{armature_obj.name}'.")
+    return True
 
 
 def execute_graph(payload_json: str):
@@ -257,19 +346,86 @@ def execute_graph(payload_json: str):
                 active_obj.hide_render = False
                 log(f"  Showed object '{active_obj.name}'")
 
+        # ---- CREATE_CHARACTER / CLASSIFY_CHARACTER ----
+        elif op_type in ("CREATE_CHARACTER", "CLASSIFY_CHARACTER"):
+            glb_path = params.get("asset_glb_path") or params.get("glb_path")
+            if glb_path and os.path.exists(glb_path):
+                log(f"  Importing character mesh GLB into Blender: {glb_path}")
+                try:
+                    bpy.ops.import_scene.gltf(filepath=glb_path)
+                except Exception as exc:
+                    log(f"  Warning: failed to import GLB {glb_path}: {exc}")
+            else:
+                log(f"  Processed {op_type} step for '{params.get('name', 'Character')}'")
+
+        # ---- CREATE_SKELETON / CREATE_RIG / RIG_CHARACTER ----
+        elif op_type in ("CREATE_SKELETON", "CREATE_RIG", "RIG_CHARACTER"):
+            rig_name = params.get("rig_name", "GameForge_Humanoid_Rig")
+            arm_name = params.get("armature_name", "GameForge_Armature")
+            armature_obj = create_humanoid_armature(armature_name=arm_name, rig_name=rig_name)
+            active_obj = armature_obj
+
+        # ---- SKIN_CHARACTER ----
+        elif op_type == "SKIN_CHARACTER":
+            armature_ref = params.get("armature_name", "GameForge_Humanoid_Rig")
+            armature_obj = bpy.data.objects.get(armature_ref) or next((o for o in bpy.data.objects if o.type == 'ARMATURE'), None)
+
+            if not armature_obj:
+                armature_obj = create_humanoid_armature()
+
+            # Target mesh objects in scene
+            mesh_objs = [o for o in bpy.data.objects if o.type == 'MESH']
+            if not mesh_objs:
+                # Create default humanoid mesh representation if none exists
+                bpy.ops.mesh.primitive_uv_sphere_add(radius=0.5, location=(0, 0, 1.5))
+                head_mesh = bpy.context.active_object
+                head_mesh.name = "Character_Mesh"
+                mesh_objs = [head_mesh]
+
+            max_inf = params.get("max_influences_per_vertex", 4)
+            for m in mesh_objs:
+                skin_mesh_to_armature(m, armature_obj, max_influences=max_inf)
+
+        # ---- VALIDATE_CHARACTER ----
+        elif op_type == "VALIDATE_CHARACTER":
+            armature_objs = [o for o in bpy.data.objects if o.type == 'ARMATURE']
+            mesh_objs = [o for o in bpy.data.objects if o.type == 'MESH']
+            log(f"  Character validation check: Armatures={len(armature_objs)}, Meshes={len(mesh_objs)}")
+
         # ---- EXPORT_GLB ----
         elif op_type == "EXPORT_GLB":
-            # Add default lighting and camera for scene completeness
-            bpy.ops.object.light_add(type='SUN', location=(5, 5, 10))
-            bpy.ops.object.camera_add(location=(4, -4, 3), rotation=(1.1, 0, 0.8))
+            # Add default lighting and camera for scene completeness if missing
+            if not any(o.type == 'LIGHT' for o in bpy.data.objects):
+                bpy.ops.object.light_add(type='SUN', location=(5, 5, 10))
+            if not any(o.type == 'CAMERA' for o in bpy.data.objects):
+                bpy.ops.object.camera_add(location=(4, -4, 3), rotation=(1.1, 0, 0.8))
 
             os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-            log(f"  Exporting scene to GLB: {output_path}")
-            bpy.ops.export_scene.gltf(
-                filepath=output_path,
-                export_format='GLB',
-                use_selection=False,
-            )
+            log(f"  Exporting scene to GLB with skins and armatures: {output_path}")
+
+            export_kwargs = {
+                "filepath": output_path,
+                "export_format": 'GLB',
+                "use_selection": False,
+                "export_materials": 'EXPORT',
+            }
+            # Enable skin and armature export if supported in BPY version
+            try:
+                bpy.ops.export_scene.gltf(
+                    filepath=output_path,
+                    export_format='GLB',
+                    use_selection=False,
+                    export_skins=True,
+                    export_all_armatures=True,
+                    export_materials='EXPORT',
+                )
+            except Exception as exc:
+                log(f"  gltf export fallback: {exc}")
+                bpy.ops.export_scene.gltf(
+                    filepath=output_path,
+                    export_format='GLB',
+                    use_selection=False,
+                )
             log(f"  Successfully exported GLB to {output_path}")
 
         else:

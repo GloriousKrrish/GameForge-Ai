@@ -1,13 +1,37 @@
 import { useState, useEffect } from "react";
-import { Boxes, Box, Layers, Eye, EyeOff, Trash2, Sparkles, Plus, Loader2, Palette, Cpu, AlertTriangle } from "lucide-react";
+import { Boxes, Box, Layers, Eye, EyeOff, Trash2, Sparkles, Plus, Loader2, Palette, Cpu, AlertTriangle, User, Bone, Activity, CheckCircle2 } from "lucide-react";
 import { useGameForgeStore } from "@/store/useGameForgeStore";
 import { getActiveScene, updateSceneObject, deleteSceneObject } from "@/api/scene";
 import { listMaterials, assignMaterialToObject } from "@/api/material";
 import { listAssets, generateAsset3D, instantiateAssetInScene, deleteAsset, AssetModelData } from "@/api/asset";
+import { listCharacters, createCharacter, rigCharacter, instantiateCharacterInScene, deleteCharacter as apiDeleteCharacter, CharacterData } from "@/api/characters";
 
 export function Sidebar() {
   const [activeTab, setActiveTab] = useState<"hierarchy" | "assets">("hierarchy");
-  const [assetSubTab, setAssetSubTab] = useState<"models" | "materials">("models");
+  const [assetSubTab, setAssetSubTab] = useState<"models" | "materials" | "characters">("models");
+  const [riggingCharId, setRiggingCharId] = useState<string | null>(null);
+
+  const {
+    charactersList,
+    setCharactersList,
+    selectedCharacter,
+    setSelectedCharacter,
+    setActiveSkeleton,
+    setIsRigVisualized,
+  } = useGameForgeStore();
+
+  const refreshCharacters = async () => {
+    try {
+      const chars = await listCharacters();
+      setCharactersList(chars);
+    } catch (err: any) {
+      console.error("Failed to load characters list:", err);
+    }
+  };
+
+  useEffect(() => {
+    refreshCharacters();
+  }, []);
 
   // Asset Generation Form State
   const [genPrompt, setGenPrompt] = useState("");
@@ -292,12 +316,21 @@ export function Sidebar() {
             </button>
             <button
               onClick={() => setAssetSubTab("materials")}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1 rounded font-medium transition-colors ${
+              className={`flex-1 flex items-center justify-center gap-1 py-1 rounded font-medium transition-colors ${
                 assetSubTab === "materials" ? "bg-panel text-gold shadow-sm" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               <Palette className="size-3" />
               Materials ({materialsList.length})
+            </button>
+            <button
+              onClick={() => setAssetSubTab("characters")}
+              className={`flex-1 flex items-center justify-center gap-1 py-1 rounded font-medium transition-colors ${
+                assetSubTab === "characters" ? "bg-panel text-gold shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <User className="size-3" />
+              Characters ({charactersList.length})
             </button>
           </div>
 
@@ -434,21 +467,44 @@ export function Sidebar() {
                           <span className="uppercase text-gold-soft font-semibold">{asset.status}</span>
                         </div>
 
-                        {/* Instantiate Action Button */}
-                        <button
-                          onClick={() => handleInstantiateAsset(asset.id)}
-                          className="mt-0.5 flex items-center justify-center gap-1.5 rounded bg-gold/15 border border-gold/30 py-1 text-xs font-semibold text-gold hover:bg-gold/30 transition-colors"
-                        >
-                          <Plus className="size-3" />
-                          Add to Scene
-                        </button>
+                        {/* Actions */}
+                        <div className="flex gap-1 mt-0.5">
+                          <button
+                            onClick={() => handleInstantiateAsset(asset.id)}
+                            className="flex-1 flex items-center justify-center gap-1 rounded bg-gold/15 border border-gold/30 py-1 text-[11px] font-semibold text-gold hover:bg-gold/30 transition-colors"
+                          >
+                            <Plus className="size-3" />
+                            Add to Scene
+                          </button>
+                          <button
+                            onClick={async () => {
+                              try {
+                                const newChar = await createCharacter({
+                                  asset_id: asset.id,
+                                  name: asset.name,
+                                  character_type: "HUMANOID",
+                                });
+                                await refreshCharacters();
+                                setSelectedCharacter(newChar);
+                                setAssetSubTab("characters");
+                              } catch (err: any) {
+                                setErrorMessage(err.message || "Failed to create character.");
+                              }
+                            }}
+                            className="flex items-center justify-center gap-1 rounded bg-secondary px-2 py-1 text-[11px] font-medium text-foreground hover:bg-secondary/80 transition-colors"
+                            title="Register as Character"
+                          >
+                            <User className="size-3" />
+                            As Character
+                          </button>
+                        </div>
                       </div>
                     );
                   })
                 )}
               </div>
             </div>
-          ) : (
+          ) : assetSubTab === "materials" ? (
             <div className="flex flex-col gap-2">
               <p className="px-1 text-[10px] uppercase tracking-[0.2em] text-muted-foreground pb-1 font-semibold">
                 Materials & Presets
@@ -508,6 +564,161 @@ export function Sidebar() {
                           Assign
                         </button>
                       )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          ) : (
+            /* Character Library Subtab */
+            <div className="flex flex-col gap-2">
+              <p className="px-1 text-[10px] uppercase tracking-[0.2em] text-muted-foreground pb-1 font-semibold">
+                Character Library ({charactersList.length})
+              </p>
+
+              {charactersList.length === 0 ? (
+                <div className="p-3 text-center border border-dashed border-border rounded-lg">
+                  <User className="size-6 text-muted-foreground mx-auto mb-1 opacity-60" />
+                  <p className="text-xs text-muted-foreground">No characters created yet.</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">Select an asset from 3D Assets tab and click &quot;As Character&quot; to begin.</p>
+                </div>
+              ) : (
+                charactersList.map((char: CharacterData) => {
+                  const isSelected = selectedCharacter?.id === char.id;
+                  const isReady = char.status === "READY";
+                  const isRigged = char.status === "RIGGED";
+                  const isRigging = char.status === "RIGGING" || riggingCharId === char.id;
+
+                  return (
+                    <div
+                      key={char.id}
+                      onClick={() => setSelectedCharacter(char)}
+                      className={`rounded-lg border p-2.5 flex flex-col gap-2 transition-colors cursor-pointer ${
+                        isSelected ? "border-gold bg-gold/10" : "border-border/80 bg-secondary/20 hover:border-gold/30"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-2 truncate">
+                          <User className="size-4 text-gold shrink-0" />
+                          <div className="truncate">
+                            <span className="font-semibold text-xs text-foreground block truncate">{char.name}</span>
+                            <span className="text-[10px] text-muted-foreground block font-mono truncate">{char.id}</span>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              await apiDeleteCharacter(char.id);
+                              await refreshCharacters();
+                              if (selectedCharacter?.id === char.id) {
+                                setSelectedCharacter(null);
+                              }
+                            } catch (err: any) {
+                              setErrorMessage(err.message || "Failed to delete character.");
+                            }
+                          }}
+                          className="text-muted-foreground hover:text-red-400 p-0.5"
+                          title="Delete Character"
+                        >
+                          <Trash2 className="size-3" />
+                        </button>
+                      </div>
+
+                      {/* Character Type & Rig Status Badges */}
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="rounded bg-secondary px-1.5 py-0.5 text-muted-foreground font-medium">
+                          {char.character_type}
+                        </span>
+
+                        {isReady ? (
+                          <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 font-semibold text-emerald-400 border border-emerald-500/30">
+                            <CheckCircle2 className="size-2.5" />
+                            READY (Animation-Ready)
+                          </span>
+                        ) : isRigged ? (
+                          <span className="inline-flex items-center gap-1 rounded bg-blue-500/15 px-1.5 py-0.5 font-semibold text-blue-400 border border-blue-500/30">
+                            <Bone className="size-2.5" />
+                            RIGGED (Blender Rig)
+                          </span>
+                        ) : isRigging ? (
+                          <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 font-semibold text-amber-400 border border-amber-500/30 animate-pulse">
+                            <Loader2 className="size-2.5 animate-spin" />
+                            RIGGING...
+                          </span>
+                        ) : (
+                          <span className="rounded bg-gray-500/15 px-1.5 py-0.5 font-medium text-gray-400">
+                            {char.status}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Character Actions */}
+                      <div className="flex items-center gap-1.5 pt-1 border-t border-border/40">
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            setRiggingCharId(char.id);
+                            try {
+                              const res = await rigCharacter(char.id, { rig_type: "HUMANOID" });
+                              await refreshCharacters();
+                              if (res.character) {
+                                setSelectedCharacter(res.character);
+                              }
+                              if (res.skeleton) {
+                                setActiveSkeleton(res.skeleton);
+                                setIsRigVisualized(true);
+                              }
+                            } catch (err: any) {
+                              setErrorMessage(err.message || "Rigging character failed.");
+                            } finally {
+                              setRiggingCharId(null);
+                            }
+                          }}
+                          disabled={isRigging}
+                          className="flex-1 flex items-center justify-center gap-1 rounded bg-gold px-2 py-1 text-[11px] font-semibold text-background hover:bg-gold/90 disabled:opacity-50 transition-colors"
+                        >
+                          {isRigging ? (
+                            <Loader2 className="size-3 animate-spin" />
+                          ) : (
+                            <Bone className="size-3" />
+                          )}
+                          Rig Character
+                        </button>
+
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              const res = await instantiateCharacterInScene(char.id);
+                              if (res.success && res.scene) {
+                                const mapped = res.scene.objects.map((o: any) => ({
+                                  id: o.id,
+                                  name: o.name,
+                                  type: o.object_type,
+                                  position: o.transform.position,
+                                  rotation: o.transform.rotation,
+                                  scale: o.transform.scale,
+                                  parent_id: o.parent_id,
+                                  visible: o.visible ?? true,
+                                }));
+                                setSceneObjects(mapped);
+                                if (res.glb_url) {
+                                  setActiveAssetUrl(res.glb_url);
+                                }
+                              }
+                            } catch (err: any) {
+                              setErrorMessage(err.message || "Failed to instantiate character in scene.");
+                            }
+                          }}
+                          className="flex items-center justify-center gap-1 rounded bg-secondary border border-border px-2 py-1 text-[11px] font-medium text-foreground hover:bg-secondary/80 transition-colors"
+                          title="Instantiate into Scene"
+                        >
+                          <Plus className="size-3" />
+                          Scene
+                        </button>
+                      </div>
                     </div>
                   );
                 })
