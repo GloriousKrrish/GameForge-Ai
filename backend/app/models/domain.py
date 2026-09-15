@@ -61,6 +61,23 @@ class RigType(str, Enum):
     CUSTOM = "CUSTOM"
 
 
+class AnimationType(str, Enum):
+    IDLE = "IDLE"
+    WALK = "WALK"
+    RUN = "RUN"
+    WAVE = "WAVE"
+    JUMP = "JUMP"
+    PROCEDURAL = "PROCEDURAL"
+    CUSTOM = "CUSTOM"
+
+
+class AnimationStatus(str, Enum):
+    PENDING = "PENDING"
+    GENERATING = "GENERATING"
+    READY = "READY"
+    FAILED = "FAILED"
+
+
 class AssetModel(BaseModel):
     id: str
     project_id: str = "proj_default"
@@ -158,6 +175,51 @@ class RigCharacterRequest(BaseModel):
     auto_weight: bool = True
     preserve_materials: bool = True
     preserve_transforms: bool = True
+
+
+class AnimationModel(BaseModel):
+    id: str
+    project_id: str = "proj_default"
+    character_id: str
+    rig_id: Optional[str] = None
+    name: str
+    animation_type: AnimationType = AnimationType.PROCEDURAL
+    status: AnimationStatus = AnimationStatus.READY
+    duration_seconds: float = 2.0
+    fps: int = 30
+    frame_start: int = 1
+    frame_end: int = 60
+    is_looping: bool = True
+    glb_url: Optional[str] = None
+    track_count: int = 0
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+class AnimationCreateRequest(BaseModel):
+    character_id: str
+    name: str
+    animation_type: AnimationType = AnimationType.PROCEDURAL
+    rig_id: Optional[str] = None
+    duration_seconds: float = 2.0
+    fps: int = 30
+    frame_start: int = 1
+    frame_end: int = 60
+    is_looping: bool = True
+    project_id: str = "proj_default"
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class AnimationUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    animation_type: Optional[AnimationType] = None
+    duration_seconds: Optional[float] = None
+    fps: Optional[int] = None
+    frame_start: Optional[int] = None
+    frame_end: Optional[int] = None
+    is_looping: Optional[bool] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class Texture(BaseModel):

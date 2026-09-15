@@ -110,6 +110,17 @@ class Database:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS animations (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    character_id TEXT NOT NULL,
+                    rig_id TEXT,
+                    data_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(character_id) REFERENCES characters(id) ON DELETE CASCADE
+                );
             """)
             logger.info("SQLite database initialized at %s", self.db_file)
 

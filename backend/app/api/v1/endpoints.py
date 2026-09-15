@@ -22,11 +22,12 @@ from app.db.repositories import SceneRepository, MaterialRepository
 from app.models.domain import (
     Material, MaterialCreateRequest, MaterialUpdateRequest, AssignMaterialRequest,
     AssetGenerationRequest, InstantiateAssetRequest, AssetModel, CharacterCreateRequest,
-    RigCharacterRequest, InstantiateCharacterRequest,
+    RigCharacterRequest, InstantiateCharacterRequest, AnimationCreateRequest, AnimationUpdateRequest,
 )
 from app.providers.adapter import provider_adapter
 from app.services.asset_validator import AssetValidator, AssetNormalizer
 from app.services.character_manager import CharacterValidationError, character_manager
+from app.services.animation_manager import AnimationValidationError, animation_manager
 
 logger = logging.getLogger("gameforge.api")
 
@@ -148,6 +149,56 @@ async def inspect_character_glb(character_id: str):
         return glb_inspector.inspect(str(local_path))
     except GLBInspectorError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Animations (Phase 6A)
+# ---------------------------------------------------------------------------
+@router.get("/characters/{character_id}/animations")
+async def list_character_animations(character_id: str, project_id: str = "proj_default"):
+    character = character_manager.get_character(character_id)
+    if not character:
+        raise HTTPException(status_code=404, detail=f"Character '{character_id}' not found.")
+    if character.project_id != project_id:
+        raise HTTPException(status_code=403, detail="Character does not belong to specified project.")
+    return animation_manager.list_animations(character_id=character.id, project_id=project_id)
+
+
+@router.post("/characters/{character_id}/animations", status_code=status.HTTP_201_CREATED)
+async def create_character_animation(character_id: str, req: AnimationCreateRequest):
+    character = character_manager.get_character(character_id)
+    if not character:
+        raise HTTPException(status_code=404, detail=f"Character '{character_id}' not found.")
+    if character.id != req.character_id:
+        raise HTTPException(status_code=422, detail="URL character_id does not match payload character_id.")
+    try:
+        return animation_manager.create_animation(character, req)
+    except AnimationValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/animations/{animation_id}")
+async def get_animation(animation_id: str):
+    anim = animation_manager.get_animation(animation_id)
+    if not anim:
+        raise HTTPException(status_code=404, detail=f"Animation '{animation_id}' not found.")
+    return anim
+
+
+@router.patch("/animations/{animation_id}")
+async def update_animation(animation_id: str, req: AnimationUpdateRequest):
+    try:
+        return animation_manager.update_animation(animation_id, req)
+    except AnimationValidationError as exc:
+        status_code = 404 if "not found" in str(exc).lower() else 422
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@router.delete("/animations/{animation_id}")
+async def delete_animation(animation_id: str):
+    if not animation_manager.delete_animation(animation_id):
+        raise HTTPException(status_code=404, detail=f"Animation '{animation_id}' not found.")
+    return {"success": True}
 
 
 # ---------------------------------------------------------------------------

@@ -217,6 +217,25 @@ class ExecutionGraphValidator:
             if not isinstance(params.get("character_id"), str):
                 return f"Invalid character_id at step '{step_id}'."
 
+        elif op == OperationType.CREATE_ANIMATION:
+            if not isinstance(params.get("character_id"), str) or not params["character_id"].strip():
+                return f"Invalid character_id at step '{step_id}'. Must be a non-empty string."
+            if not isinstance(params.get("name"), str) or not params["name"].strip():
+                return f"Invalid animation name at step '{step_id}'. Must be a non-empty string."
+            anim_type = params.get("animation_type", "PROCEDURAL")
+            if anim_type not in ("IDLE", "WALK", "RUN", "WAVE", "JUMP", "PROCEDURAL", "CUSTOM"):
+                return f"Invalid animation_type '{anim_type}' at step '{step_id}'."
+            duration = params.get("duration_seconds", 2.0)
+            if not isinstance(duration, (int, float)) or duration <= 0.0 or duration > 600.0:
+                return f"Invalid duration_seconds '{duration}' at step '{step_id}'."
+            fps = params.get("fps", 30)
+            if not isinstance(fps, int) or fps < 1 or fps > 120:
+                return f"Invalid fps '{fps}' at step '{step_id}'."
+
+        elif op == OperationType.VALIDATE_ANIMATION:
+            if not isinstance(params.get("animation_id"), str) or not params["animation_id"].strip():
+                return f"Invalid animation_id at step '{step_id}'. Must be a non-empty string."
+
         elif op == OperationType.DELETE_OBJECT:
             # target_name is optional; if omitted, deletes the active object
             pass
