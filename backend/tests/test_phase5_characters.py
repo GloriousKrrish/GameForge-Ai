@@ -11,14 +11,19 @@ from app.services.character_manager import CharacterValidationError, character_m
 from app.services.validator import ExecutionGraphValidator
 
 
-def make_asset(asset_id="asset_character_1", project_id="proj_default"):
+def make_asset(asset_id="asset_char_test", project_id="proj_default"):
+    from pathlib import Path
+    exports_dir = Path(__file__).resolve().parents[1] / "public" / "exports"
+    glbs = list(exports_dir.glob("*.glb")) if exports_dir.exists() else []
+    glb_url = f"/exports/{glbs[0].name}" if glbs else "/exports/warrior.glb"
+
     return asset_manager.save_asset(AssetModel(
         id=asset_id,
         project_id=project_id,
         name="Stylized Warrior",
         source_type=AssetSourceType.GENERATED,
         status=AssetStatus.READY,
-        glb_url="/exports/warrior.glb",
+        glb_url=glb_url,
     ))
 
 

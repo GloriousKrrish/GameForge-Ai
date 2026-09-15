@@ -22,12 +22,17 @@ from app.services.validator import ExecutionGraphValidator
 
 def create_test_character(name: str = "Test_Anim_Char", project_id: str = "proj_default"):
     """Helper to create a fully rigged character with Phase 5 armature and skinning."""
+    from pathlib import Path
+    exports_dir = Path(__file__).resolve().parents[1] / "public" / "exports"
+    glbs = list(exports_dir.glob("*.glb")) if exports_dir.exists() else []
+    glb_url = f"/exports/{glbs[0].name}" if glbs else "/exports/test.glb"
+
     asset = asset_manager.save_asset(
         AssetModel(
             id=f"asset_test_{name}",
             project_id=project_id,
             name=name,
-            glb_url="/assets/test.glb",
+            glb_url=glb_url,
         )
     )
     char = character_manager.create_character(asset, name, CharacterType.HUMANOID)

@@ -64,7 +64,7 @@ class AnimationManager:
             rig_id=req.rig_id,
             name=req.name.strip(),
             animation_type=req.animation_type,
-            status=AnimationStatus.READY,
+            status=AnimationStatus.PENDING,
             duration_seconds=float(req.duration_seconds),
             fps=int(req.fps),
             frame_start=int(req.frame_start),
@@ -98,10 +98,16 @@ class AnimationManager:
             )
         return animation
 
-    def get_animation(self, animation_id: str) -> Optional[AnimationModel]:
-        """Fetch animation by ID from SQLite."""
+    def get_animation(self, animation_id: str, project_id: Optional[str] = None) -> Optional[AnimationModel]:
+        """Fetch animation by ID from SQLite with optional project isolation filtering."""
         with db.get_connection() as conn:
-            row = conn.execute("SELECT data_json FROM animations WHERE id = ?", (animation_id,)).fetchone()
+            if project_id:
+                row = conn.execute(
+                    "SELECT data_json FROM animations WHERE id = ? AND project_id = ?",
+                    (animation_id, project_id),
+                ).fetchone()
+            else:
+                row = conn.execute("SELECT data_json FROM animations WHERE id = ?", (animation_id,)).fetchone()
         return AnimationModel.model_validate(json.loads(row["data_json"])) if row else None
 
     def list_animations(
@@ -203,9 +209,10 @@ class AnimationManager:
         motion_preset: Optional[str] = None,
         speed: float = 1.0,
         amplitude: float = 1.0,
+        project_id: Optional[str] = None,
     ) -> AnimationModel:
         """Trigger controlled Blender procedural animation generation for an existing AnimationModel."""
-        anim = self.get_animation(animation_id)
+        anim = self.get_animation(animation_id, project_id=project_id)
         if not anim:
             raise AnimationValidationError(f"Animation '{animation_id}' not found.")
 
@@ -225,6 +232,7 @@ class AnimationManager:
         from pathlib import Path
         from app.schemas.execution_graph import ExecutionGraph, ExecutionStep, OperationType
         from app.execution.engine import ExecutionEngine
+        from app.services.animation_validator import animation_validator
 
         graph = ExecutionGraph(
             id=f"graph_anim_{anim.id}",
@@ -259,19 +267,52 @@ class AnimationManager:
         )
 
         engine = ExecutionEngine(exports_dir=Path("backend/public/exports"))
+        anim.status = AnimationStatus.EXPORTING
+        self.save_animation(anim)
+
         success, msg, glb_url = engine.execute(graph, job_id=f"anim_job_{anim.id}")
 
-        if success:
+        if success and glb_url:
+            anim.status = AnimationStatus.VALIDATING
+            self.save_animation(anim)
+
+            exports_dir = Path("backend/public/exports").resolve()
+            rel_file = glb_url.replace("/exports/", "").lstrip("/")
+            local_glb_path = (exports_dir / rel_file).resolve()
+
+            if not local_glb_path.exists() or exports_dir not in local_glb_path.parents:
+                anim.status = AnimationStatus.FAILED
+                anim.metadata["error"] = "Exported GLB artifact not found or outside export directory."
+                self.save_animation(anim)
+                raise AnimationValidationError(f"Exported GLB artifact not found: {glb_url}")
+
+            validation_res = animation_validator.validate_glb(str(local_glb_path))
+            if not validation_res.valid:
+                anim.status = AnimationStatus.FAILED
+                anim.metadata["validation_errors"] = validation_res.errors
+                anim.metadata["error"] = f"Structural validation failed: {validation_res.errors}"
+                self.save_animation(anim)
+                logger.error("GLB animation validation failed for '%s': %s", anim.id, validation_res.errors)
+                raise AnimationValidationError(f"GLB animation structural validation failed: {validation_res.errors}")
+
             anim.status = AnimationStatus.READY
             anim.glb_url = glb_url
-            anim.track_count = 9
+            if validation_res.animations:
+                first_anim = validation_res.animations[0]
+                anim.track_count = first_anim.channel_count
+                if first_anim.duration_seconds > 0.0:
+                    anim.duration_seconds = first_anim.duration_seconds
+            else:
+                anim.track_count = 9
+
             anim.metadata["provider"] = "DETERMINISTIC_PROCEDURAL"
             anim.metadata["motion_preset"] = preset
             anim.metadata["speed"] = speed
             anim.metadata["amplitude"] = amplitude
             anim.metadata["blender_log"] = msg
+            anim.metadata["validation_summary"] = validation_res.model_dump()
             self.save_animation(anim)
-            logger.info("Successfully generated Blender animation '%s' (%s) preset=%s", anim.name, anim.id, preset)
+            logger.info("Successfully generated & validated Blender animation '%s' (%s) preset=%s", anim.name, anim.id, preset)
             return anim
         else:
             anim.status = AnimationStatus.FAILED
@@ -279,6 +320,34 @@ class AnimationManager:
             self.save_animation(anim)
             logger.error("Failed to generate Blender animation '%s' (%s): %s", anim.name, anim.id, msg)
             raise AnimationValidationError(f"Blender animation generation failed: {msg}")
+
+    def validate_exported_animation(self, animation_id: str, project_id: str = "proj_default"):
+        """Run structural validation on an existing exported animation GLB artifact."""
+        from pathlib import Path
+        from app.services.animation_validator import animation_validator, AnimationValidationResult
+
+        anim = self.get_animation(animation_id)
+        if not anim:
+            raise AnimationValidationError(f"Animation '{animation_id}' not found.")
+
+        character = character_manager.get_character(anim.character_id)
+        if not character:
+            raise AnimationValidationError(f"Target character '{anim.character_id}' not found.")
+
+        if anim.project_id != project_id or character.project_id != project_id:
+            raise AnimationValidationError("Project isolation mismatch: Animation does not belong to target project.")
+
+        if not anim.glb_url:
+            raise AnimationValidationError(f"Animation '{animation_id}' has no exported GLB artifact.")
+
+        exports_dir = Path("backend/public/exports").resolve()
+        rel_file = anim.glb_url.replace("/exports/", "").lstrip("/")
+        local_glb_path = (exports_dir / rel_file).resolve()
+
+        if not local_glb_path.exists() or exports_dir not in local_glb_path.parents:
+            raise AnimationValidationError(f"Target GLB artifact '{anim.glb_url}' does not exist inside exports directory.")
+
+        return animation_validator.validate_glb(str(local_glb_path))
 
     @staticmethod
     def _validate_timing_bounds(duration: float, fps: int, frame_start: int, frame_end: int) -> None:

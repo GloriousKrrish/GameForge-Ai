@@ -74,6 +74,8 @@ class AnimationType(str, Enum):
 class AnimationStatus(str, Enum):
     PENDING = "PENDING"
     GENERATING = "GENERATING"
+    EXPORTING = "EXPORTING"
+    VALIDATING = "VALIDATING"
     READY = "READY"
     FAILED = "FAILED"
 
@@ -226,6 +228,34 @@ class GenerateAnimationRequest(BaseModel):
     motion_preset: Optional[str] = None
     speed: float = 1.0
     amplitude: float = 1.0
+
+
+class AnimationReport(BaseModel):
+    index: int = 0
+    name: str = "Animation"
+    duration_seconds: float = 0.0
+    channel_count: int = 0
+    sampler_count: int = 0
+    keyframe_count: int = 0
+    animated_node_count: int = 0
+    target_paths: List[str] = Field(default_factory=list)
+    valid: bool = True
+    errors: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
+class AnimationValidationResult(BaseModel):
+    valid: bool = True
+    file_path: str = ""
+    file_size_bytes: int = 0
+    animation_count: int = 0
+    has_skins: bool = False
+    skin_count: int = 0
+    mesh_count: int = 0
+    material_count: int = 0
+    animations: List[AnimationReport] = Field(default_factory=list)
+    errors: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
 
 
 class Texture(BaseModel):

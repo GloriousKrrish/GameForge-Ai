@@ -212,6 +212,15 @@ async def generate_animation(animation_id: str, req: Optional[GenerateAnimationR
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
 
+@router.post("/animations/{animation_id}/validate")
+async def validate_animation(animation_id: str, project_id: str = "proj_default"):
+    try:
+        return animation_manager.validate_exported_animation(animation_id=animation_id, project_id=project_id)
+    except AnimationValidationError as exc:
+        status_code = 404 if ("not found" in str(exc).lower() or "isolation" in str(exc).lower()) else 422
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
 @router.delete("/animations/{animation_id}")
 async def delete_animation(animation_id: str):
     if not animation_manager.delete_animation(animation_id):
