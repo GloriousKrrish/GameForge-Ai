@@ -146,17 +146,16 @@ def apply_procedural_animation_to_armature(armature_obj, params):
         bpy.context.scene.render.fps = fps
 
         # Action setup
-        action_name = f"GameForge_Action_{preset}_{anim_id}"
-        try:
-            action = bpy.data.actions.new(name=action_name)
-        except Exception as exc:
-            log(f"  Warning creating action '{action_name}': {exc}")
-            action = None
-
         if not armature_obj.animation_data:
             armature_obj.animation_data_create()
-        if action:
-            armature_obj.animation_data.action = action
+        
+        action_name = f"GameForge_Action_{preset}_{anim_id}"
+        if not armature_obj.animation_data.action:
+            try:
+                armature_obj.animation_data.action = bpy.data.actions.new(name=action_name)
+            except Exception as exc:
+                log(f"  Warning creating action '{action_name}': {exc}")
+        action = armature_obj.animation_data.action
 
         # Map pose bones
         try:
