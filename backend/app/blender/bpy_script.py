@@ -127,9 +127,8 @@ def apply_procedural_animation_to_armature(armature_obj, params):
         log("  Animation warning: Target object is not an Armature.")
         return False
 
-    try:
-        armature_obj.select_set(True)
-        bpy.context.view_layer.objects.active = armature_obj
+    armature_obj.select_set(True)
+    bpy.context.view_layer.objects.active = armature_obj
 
         anim_id = params.get("animation_id", "anim_default")
         preset = params.get("motion_preset") or params.get("animation_type") or "IDLE"
