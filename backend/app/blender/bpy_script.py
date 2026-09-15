@@ -251,13 +251,19 @@ def apply_procedural_animation_to_armature(armature_obj, params):
                     elif name == "Root":
                         loc_z = -0.1 * amp * l_phase
 
-            q = mathutils.Euler((rx, ry, rz), 'XYZ').to_quaternion()
-            pb.rotation_quaternion = q
-            pb.keyframe_insert(data_path="rotation_quaternion", frame=f)
+            try:
+                q = mathutils.Euler((rx, ry, rz), 'XYZ').to_quaternion()
+                pb.rotation_quaternion = q
+                pb.keyframe_insert(data_path="rotation_quaternion", frame=f)
+            except Exception as exc:
+                log(f"  Warning keyframing rotation for bone {pb.name} at frame {f}: {exc}")
 
             if loc_x != 0.0 or loc_y != 0.0 or loc_z != 0.0:
-                pb.location = (loc_x, loc_y, loc_z)
-                pb.keyframe_insert(data_path="location", frame=f)
+                try:
+                    pb.location = (loc_x, loc_y, loc_z)
+                    pb.keyframe_insert(data_path="location", frame=f)
+                except Exception as exc:
+                    log(f"  Warning keyframing location for bone {pb.name} at frame {f}: {exc}")
 
     try:
         bpy.ops.object.mode_set(mode='OBJECT')
