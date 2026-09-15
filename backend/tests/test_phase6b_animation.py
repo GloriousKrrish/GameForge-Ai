@@ -11,7 +11,7 @@ Verifies:
 import pytest
 from app.models.domain import (
     AnimationCreateRequest, AnimationStatus, AnimationType, AssetModel,
-    CharacterCreateRequest, RigCharacterRequest, RigType,
+    CharacterCreateRequest, CharacterType, RigCharacterRequest, RigType,
 )
 from app.schemas.execution_graph import ExecutionGraph, ExecutionStep, OperationType
 from app.services.animation_manager import AnimationValidationError, animation_manager
@@ -22,7 +22,7 @@ from app.services.validator import ExecutionGraphValidator
 
 def create_test_character(name: str = "Test_Anim_Char", project_id: str = "proj_default"):
     """Helper to create a fully rigged character with Phase 5 armature and skinning."""
-    asset = asset_manager.create_asset(
+    asset = asset_manager.save_asset(
         AssetModel(
             id=f"asset_test_{name}",
             project_id=project_id,
@@ -30,11 +30,9 @@ def create_test_character(name: str = "Test_Anim_Char", project_id: str = "proj_
             glb_url="/assets/test.glb",
         )
     )
-    char = character_manager.create_character(
-        CharacterCreateRequest(asset_id=asset.id, name=name, project_id=project_id)
-    )
+    char = character_manager.create_character(asset, name, CharacterType.HUMANOID)
     rig_req = RigCharacterRequest(rig_type=RigType.HUMANOID, auto_weight=True)
-    char = character_manager.rig_character(char.id, rig_req)
+    char, rig, skeleton = character_manager.rig_character(char, rig_req)
     return char
 
 
