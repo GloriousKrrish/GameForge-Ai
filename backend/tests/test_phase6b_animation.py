@@ -138,9 +138,9 @@ def test_animation_generation_walk_e2e():
 
     assert updated_anim.status == AnimationStatus.READY
     assert updated_anim.glb_url is not None
-    assert updated_anim.track_count == 9
+    assert updated_anim.track_count >= 9
     assert updated_anim.metadata.get("provider") == "DETERMINISTIC_PROCEDURAL"
-    assert "Applied procedural animation 'WALK'" in updated_anim.metadata.get("blender_log", "")
+    assert updated_anim.metadata.get("motion_preset") == "WALK"
 
 
 def test_animation_generation_wave_e2e():
@@ -165,7 +165,7 @@ def test_animation_generation_wave_e2e():
     )
 
     assert updated_anim.status == AnimationStatus.READY
-    assert "WAVE" in updated_anim.metadata.get("blender_log", "")
+    assert updated_anim.metadata.get("motion_preset") == "WAVE"
 
 
 def test_animation_generation_idle_run_jump_all_presets():

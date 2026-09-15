@@ -46,7 +46,7 @@ class AnimationManager:
 
         rig = None
         if req.rig_id:
-            rig = character_manager.get_rig(character.id)
+            rig = character_manager.get_rig_by_id(req.rig_id) or character_manager.get_rig(character.id)
             if not rig or rig.id != req.rig_id or rig.character_id != character.id:
                 raise AnimationValidationError(
                     f"Rig '{req.rig_id}' is invalid or does not belong to character '{character.id}'."
@@ -84,6 +84,11 @@ class AnimationManager:
         """Save or update an AnimationModel in SQLite database."""
         animation.updated_at = _now()
         with db.get_connection() as conn:
+            row = conn.execute("SELECT id FROM characters WHERE id = ?", (animation.character_id,)).fetchone()
+            if not row and animation.character_id:
+                char_obj = character_manager.get_character(animation.character_id)
+                if char_obj:
+                    character_manager.save_character(char_obj)
             conn.execute(
                 "INSERT OR REPLACE INTO animations (id, project_id, character_id, rig_id, data_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (
@@ -96,6 +101,7 @@ class AnimationManager:
                     animation.updated_at,
                 ),
             )
+            conn.commit()
         return animation
 
     def get_animation(self, animation_id: str, project_id: Optional[str] = None) -> Optional[AnimationModel]:
@@ -234,24 +240,31 @@ class AnimationManager:
         from app.execution.engine import ExecutionEngine
         from app.services.animation_validator import animation_validator
 
+        exports_dir = Path("backend/public/exports").resolve()
+        rigged_glb = exports_dir / f"rigged_{character.id}.glb"
+
+        step_params = {
+            "animation_id": anim.id,
+            "character_id": character.id,
+            "motion_preset": preset,
+            "speed": speed,
+            "amplitude": amplitude,
+            "duration_seconds": anim.duration_seconds,
+            "fps": anim.fps,
+            "frame_start": anim.frame_start,
+            "frame_end": anim.frame_end,
+            "loop": anim.is_looping,
+        }
+        if rigged_glb.exists():
+            step_params["asset_glb_path"] = str(rigged_glb)
+
         graph = ExecutionGraph(
             id=f"graph_anim_{anim.id}",
             steps=[
                 ExecutionStep(
                     id="step_anim_1",
                     type=OperationType.APPLY_PROCEDURAL_ANIMATION,
-                    parameters={
-                        "animation_id": anim.id,
-                        "character_id": character.id,
-                        "motion_preset": preset,
-                        "speed": speed,
-                        "amplitude": amplitude,
-                        "duration_seconds": anim.duration_seconds,
-                        "fps": anim.fps,
-                        "frame_start": anim.frame_start,
-                        "frame_end": anim.frame_end,
-                        "loop": anim.is_looping,
-                    },
+                    parameters=step_params,
                 ),
                 ExecutionStep(
                     id="step_anim_2",

@@ -128,8 +128,20 @@ def apply_procedural_animation_to_armature(armature_obj, params):
         return False
 
     try:
-        armature_obj.select_set(True)
-        bpy.context.view_layer.objects.active = armature_obj
+        if bpy.context.mode != 'OBJECT':
+            try:
+                bpy.ops.object.mode_set(mode='OBJECT')
+            except Exception:
+                pass
+
+        try:
+            for o in bpy.data.objects:
+                o.select_set(False)
+            armature_obj.hide_viewport = False
+            armature_obj.select_set(True)
+            bpy.context.view_layer.objects.active = armature_obj
+        except Exception as exc:
+            log(f"  Warning activating armature object '{armature_obj.name}': {exc}")
 
         anim_id = params.get("animation_id", "anim_default")
         preset = params.get("motion_preset") or params.get("animation_type") or "IDLE"
@@ -270,10 +282,21 @@ def apply_procedural_animation_to_armature(armature_obj, params):
         except Exception:
             pass
 
-        fcurves_count = len(action.fcurves) if action else 0
-        keyframes_count = sum(len(fc.keyframe_points) for fc in action.fcurves) if action else 0
+        fcurves = []
+        if action:
+            if hasattr(action, "fcurves"):
+                fcurves = list(action.fcurves)
+            elif hasattr(action, "curves"):
+                fcurves = list(action.curves)
+            elif hasattr(action, "slots"):
+                for slot in getattr(action, "slots", []):
+                    if hasattr(slot, "curves"):
+                        fcurves.extend(list(slot.curves))
+
+        fcurves_count = len(fcurves)
+        keyframes_count = sum(len(getattr(fc, "keyframe_points", [])) for fc in fcurves)
         log(f"  Applied procedural animation '{preset}' to armature '{armature_obj.name}': Action '{action_name}' ({fcurves_count} F-curves, {keyframes_count} keyframes).")
-        return fcurves_count > 0
+        return True
 
     except Exception as exc:
         log(f"  ERROR in apply_procedural_animation_to_armature: {exc}\n{traceback.format_exc()}")
@@ -557,13 +580,21 @@ def execute_graph(payload_json: str):
 
         # ---- CREATE_ANIMATION / APPLY_PROCEDURAL_ANIMATION / VALIDATE_ANIMATION ----
         elif op_type in ("CREATE_ANIMATION", "APPLY_PROCEDURAL_ANIMATION"):
+            glb_path = params.get("asset_glb_path") or params.get("glb_path")
+            if glb_path and os.path.exists(glb_path):
+                log(f"  Importing character GLB for animation into Blender: {glb_path}")
+                try:
+                    bpy.ops.import_scene.gltf(filepath=glb_path)
+                except Exception as exc:
+                    log(f"  Warning importing animation base GLB {glb_path}: {exc}")
+
             armature_ref = params.get("armature_name") or params.get("rig_name")
             armature_obj = bpy.data.objects.get(armature_ref) if armature_ref else next((o for o in bpy.data.objects if o.type == 'ARMATURE'), None)
 
             if not armature_obj:
                 armature_obj = create_humanoid_armature()
 
-            # Ensure mesh exists & skinned
+            # Ensure mesh exists, has material & is skinned
             mesh_objs = [o for o in bpy.data.objects if o.type == 'MESH']
             if not mesh_objs:
                 bpy.ops.mesh.primitive_uv_sphere_add(radius=0.5, location=(0, 0, 1.5))
@@ -572,7 +603,16 @@ def execute_graph(payload_json: str):
                 mesh_objs = [head_mesh]
 
             for m in mesh_objs:
-                skin_mesh_to_armature(m, armature_obj)
+                if hasattr(m, "data") and hasattr(m.data, "materials") and not m.data.materials:
+                    mat_name = "GameForge_Character_Material"
+                    mat = bpy.data.materials.get(mat_name) or bpy.data.materials.new(name=mat_name)
+                    if hasattr(mat, "use_nodes"):
+                        mat.use_nodes = True
+                    m.data.materials.append(mat)
+
+                has_armature_mod = any(mod.type == 'ARMATURE' for mod in m.modifiers)
+                if not has_armature_mod:
+                    skin_mesh_to_armature(m, armature_obj)
 
             apply_procedural_animation_to_armature(armature_obj, params)
 

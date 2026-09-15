@@ -211,9 +211,9 @@ class BlenderExecutionEngine:
             if res.returncode == 0 and os.path.exists(output_glb_path):
                 return True, f"Blender execution successful. Exported to {output_glb_path}"
             else:
-                err_msg = res.stderr or res.stdout or "Unknown error"
-                logger.error("Blender process failed (code %d): %s", res.returncode, err_msg[:500])
-                return False, f"Blender process failed (code {res.returncode}): {err_msg[:500]}"
+                err_msg = f"STDERR:\n{res.stderr}\nSTDOUT:\n{res.stdout}" if res.stderr else (res.stdout or "Unknown error")
+                logger.error("Blender process failed (code %d):\n%s", res.returncode, err_msg[:2000])
+                return False, f"Blender process failed (code {res.returncode}):\n{err_msg[:2000]}"
         except subprocess.TimeoutExpired:
             return False, "Blender process timed out after 120 seconds."
         except Exception as e:

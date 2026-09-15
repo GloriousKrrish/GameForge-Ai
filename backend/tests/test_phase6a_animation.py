@@ -57,7 +57,7 @@ def test_animation_creation_and_persistence():
     assert anim.project_id == char.project_id
     assert anim.name == "Warrior Walk"
     assert anim.animation_type == AnimationType.WALK
-    assert anim.status == AnimationStatus.READY
+    assert anim.status == AnimationStatus.PENDING
     assert anim.duration_seconds == 2.5
     assert anim.fps == 30
     assert anim.frame_start == 1

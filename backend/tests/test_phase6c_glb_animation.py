@@ -306,8 +306,8 @@ def test_validator_missing_skin_and_materials():
     result = glb_animation_validator.validate_glb(glb_bytes)
 
     assert result.valid is False
-    assert any("contains no materials" in err for err in result.warnings)
-    assert any("has_skins" not in result.model_dump() or not result.has_skins for err in [1])
+    assert any("contains no materials" in err for err in (result.errors + result.warnings))
+    assert result.has_skins is False
 
 
 # ============================================================================
@@ -397,12 +397,15 @@ def test_real_blender_procedural_animation_e2e(preset):
     anim = animation_manager.generate_procedural_animation(anim.id, motion_preset=preset, project_id="proj_e2e")
 
     # Assert lifecycle state transitioned to READY
-    assert anim.status == AnimationStatus.READY, f"Animation failed with error: {anim.validation_error}"
-    assert anim.glb_export_path is not None
-    assert os.path.exists(anim.glb_export_path)
+    assert anim.status == AnimationStatus.READY, f"Animation failed with error: {anim.metadata.get('error')}"
+    assert anim.glb_url is not None
+    exports_dir = Path(__file__).resolve().parents[1] / "public" / "exports"
+    rel_name = anim.glb_url.replace("/exports/", "").lstrip("/")
+    glb_export_path = exports_dir / rel_name
+    assert glb_export_path.exists()
 
     # Read exported GLB and run independent GLB Inspector + Validator
-    with open(anim.glb_export_path, "rb") as f:
+    with open(glb_export_path, "rb") as f:
         glb_bytes = f.read()
 
     # 1. Inspect GLB
@@ -460,4 +463,4 @@ def test_export_integrity_and_persistence():
     assert reloaded_anim.status == AnimationStatus.READY
     assert reloaded_anim.track_count >= 1
     assert reloaded_anim.duration_seconds > 0
-    assert reloaded_anim.validation_error is None
+    assert reloaded_anim.metadata.get("error") is None

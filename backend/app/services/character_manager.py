@@ -43,6 +43,7 @@ class CharacterManager:
                 "INSERT OR REPLACE INTO characters (id, project_id, asset_id, data_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
                 (character.id, character.project_id, character.asset_id, json.dumps(character.model_dump()), character.created_at, character.updated_at),
             )
+            conn.commit()
         return character
 
     def get_character(self, character_id: str) -> Optional[CharacterModel]:
@@ -217,12 +218,17 @@ class CharacterManager:
 
     def get_skeleton(self, character_id: str) -> Optional[SkeletonModel]:
         with db.get_connection() as conn:
-            row = conn.execute("SELECT data_json FROM skeletons WHERE character_id = ?", (character_id,)).fetchone()
+            row = conn.execute("SELECT data_json FROM skeletons WHERE character_id = ? ORDER BY updated_at DESC", (character_id,)).fetchone()
         return SkeletonModel.model_validate(json.loads(row["data_json"])) if row else None
 
     def get_rig(self, character_id: str) -> Optional[RigModel]:
         with db.get_connection() as conn:
-            row = conn.execute("SELECT data_json FROM rigs WHERE character_id = ?", (character_id,)).fetchone()
+            row = conn.execute("SELECT data_json FROM rigs WHERE character_id = ? ORDER BY updated_at DESC", (character_id,)).fetchone()
+        return RigModel.model_validate(json.loads(row["data_json"])) if row else None
+
+    def get_rig_by_id(self, rig_id: str) -> Optional[RigModel]:
+        with db.get_connection() as conn:
+            row = conn.execute("SELECT data_json FROM rigs WHERE id = ?", (rig_id,)).fetchone()
         return RigModel.model_validate(json.loads(row["data_json"])) if row else None
 
     def validate_character(self, character: CharacterModel, skeleton: SkeletonModel, rig: RigModel) -> None:
@@ -269,10 +275,12 @@ class CharacterManager:
     def _save_skeleton(self, skeleton: SkeletonModel) -> None:
         with db.get_connection() as conn:
             conn.execute("INSERT OR REPLACE INTO skeletons VALUES (?, ?, ?, ?, ?)", (skeleton.id, skeleton.character_id, json.dumps(skeleton.model_dump()), skeleton.created_at, skeleton.updated_at))
+            conn.commit()
 
     def _save_rig(self, rig: RigModel) -> None:
         with db.get_connection() as conn:
             conn.execute("INSERT OR REPLACE INTO rigs VALUES (?, ?, ?, ?, ?, ?)", (rig.id, rig.character_id, rig.skeleton_id, json.dumps(rig.model_dump()), rig.created_at, rig.updated_at))
+            conn.commit()
 
 
 character_manager = CharacterManager()
