@@ -126,6 +126,8 @@ def apply_procedural_animation_to_armature(armature_obj, params):
         log("  Animation warning: Target object is not an Armature.")
         return False
 
+    bpy.context.view_layer.objects.active = armature_obj
+
     anim_id = params.get("animation_id", "anim_default")
     preset = params.get("motion_preset") or params.get("animation_type") or "IDLE"
     speed = float(params.get("speed", 1.0))
@@ -142,12 +144,23 @@ def apply_procedural_animation_to_armature(armature_obj, params):
 
     # Action setup
     action_name = f"GameForge_Action_{preset}_{anim_id}"
-    action = bpy.data.actions.new(name=action_name)
+    try:
+        action = bpy.data.actions.new(name=action_name)
+    except Exception as exc:
+        log(f"  Warning creating action '{action_name}': {exc}")
+        action = None
+
     if not armature_obj.animation_data:
         armature_obj.animation_data_create()
-    armature_obj.animation_data.action = action
+    if action:
+        armature_obj.animation_data.action = action
 
     # Map pose bones
+    try:
+        bpy.ops.object.mode_set(mode='POSE')
+    except Exception:
+        pass
+
     pose_bones = armature_obj.pose.bones
     for pb in pose_bones:
         pb.rotation_mode = 'QUATERNION'
@@ -243,6 +256,11 @@ def apply_procedural_animation_to_armature(armature_obj, params):
             if loc_x != 0.0 or loc_y != 0.0 or loc_z != 0.0:
                 pb.location = (loc_x, loc_y, loc_z)
                 pb.keyframe_insert(data_path="location", frame=f)
+
+    try:
+        bpy.ops.object.mode_set(mode='OBJECT')
+    except Exception:
+        pass
 
     fcurves_count = len(action.fcurves) if action else 0
     keyframes_count = sum(len(fc.keyframe_points) for fc in action.fcurves) if action else 0

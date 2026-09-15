@@ -33,6 +33,7 @@ def create_test_character(name: str = "Test_Anim_Char", project_id: str = "proj_
     char = character_manager.create_character(asset, name, CharacterType.HUMANOID)
     rig_req = RigCharacterRequest(rig_type=RigType.HUMANOID, auto_weight=True)
     char, rig, skeleton = character_manager.rig_character(char, rig_req)
+    char = character_manager.get_character(char.id) or char
     return char
 
 
