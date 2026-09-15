@@ -236,6 +236,23 @@ class ExecutionGraphValidator:
             if not isinstance(params.get("animation_id"), str) or not params["animation_id"].strip():
                 return f"Invalid animation_id at step '{step_id}'. Must be a non-empty string."
 
+        elif op == OperationType.APPLY_PROCEDURAL_ANIMATION:
+            if not isinstance(params.get("animation_id"), str) or not params["animation_id"].strip():
+                return f"Invalid animation_id at step '{step_id}'. Must be a non-empty string."
+            if not isinstance(params.get("character_id"), str) or not params["character_id"].strip():
+                return f"Invalid character_id at step '{step_id}'. Must be a non-empty string."
+            motion = params.get("motion_preset", "IDLE")
+            if motion not in ("IDLE", "WALK", "RUN", "WAVE", "JUMP"):
+                return f"Invalid motion_preset '{motion}' at step '{step_id}'. Must be IDLE, WALK, RUN, WAVE, or JUMP."
+            speed = params.get("speed", 1.0)
+            if not isinstance(speed, (int, float)) or speed < 0.1 or speed > 10.0:
+                return f"Invalid speed '{speed}' at step '{step_id}'. Must be between 0.1 and 10.0."
+            amplitude = params.get("amplitude", 1.0)
+            if not isinstance(amplitude, (int, float)) or amplitude < 0.0 or amplitude > 5.0:
+                return f"Invalid amplitude '{amplitude}' at step '{step_id}'. Must be between 0.0 and 5.0."
+            if "loop" in params and not isinstance(params["loop"], bool):
+                return f"Invalid loop parameter at step '{step_id}'. Must be a boolean."
+
         elif op == OperationType.DELETE_OBJECT:
             # target_name is optional; if omitted, deletes the active object
             pass

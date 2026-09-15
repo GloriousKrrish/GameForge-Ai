@@ -117,6 +117,139 @@ def skin_mesh_to_armature(mesh_obj, armature_obj, max_influences=4):
     return True
 
 
+def apply_procedural_animation_to_armature(armature_obj, params):
+    import bpy
+    import math
+    import mathutils
+
+    if not armature_obj or armature_obj.type != 'ARMATURE':
+        log("  Animation warning: Target object is not an Armature.")
+        return False
+
+    anim_id = params.get("animation_id", "anim_default")
+    preset = params.get("motion_preset") or params.get("animation_type") or "IDLE"
+    speed = float(params.get("speed", 1.0))
+    amp = float(params.get("amplitude", 1.0))
+    duration = float(params.get("duration_seconds", 2.0))
+    fps = int(params.get("fps", 30))
+    frame_start = int(params.get("frame_start", 1))
+    frame_end = int(params.get("frame_end", frame_start + int(duration * fps) - 1))
+
+    total_frames = max(2, frame_end - frame_start + 1)
+    bpy.context.scene.frame_start = frame_start
+    bpy.context.scene.frame_end = frame_end
+    bpy.context.scene.render.fps = fps
+
+    # Action setup
+    action_name = f"GameForge_Action_{preset}_{anim_id}"
+    action = bpy.data.actions.new(name=action_name)
+    if not armature_obj.animation_data:
+        armature_obj.animation_data_create()
+    armature_obj.animation_data.action = action
+
+    # Map pose bones
+    pose_bones = armature_obj.pose.bones
+    for pb in pose_bones:
+        pb.rotation_mode = 'QUATERNION'
+
+    for f in range(frame_start, frame_end + 1):
+        bpy.context.scene.frame_set(f)
+        # Normalized frame factor [0..1]
+        progress = (f - frame_start) / max(1, total_frames - 1)
+        t = progress * 2.0 * math.pi * speed
+
+        # Default bone transforms per frame
+        for pb in pose_bones:
+            rx, ry, rz = 0.0, 0.0, 0.0
+            loc_x, loc_y, loc_z = 0.0, 0.0, 0.0
+            name = pb.name
+
+            if preset == "IDLE":
+                if name in ("Spine", "Chest"):
+                    rx = 0.04 * amp * math.sin(t)
+                    rz = 0.02 * amp * math.cos(0.5 * t)
+                elif name == "Head":
+                    ry = 0.03 * amp * math.sin(0.5 * t)
+                elif name == "LeftArm":
+                    rz = -0.1 * amp + 0.02 * amp * math.sin(t)
+                elif name == "RightArm":
+                    rz = 0.1 * amp - 0.02 * amp * math.sin(t)
+
+            elif preset == "WALK":
+                if name == "LeftLeg":
+                    rx = 0.35 * amp * math.sin(t)
+                elif name == "RightLeg":
+                    rx = -0.35 * amp * math.sin(t)
+                elif name == "LeftArm":
+                    rx = -0.25 * amp * math.sin(t)
+                elif name == "RightArm":
+                    rx = 0.25 * amp * math.sin(t)
+                elif name == "Spine":
+                    rz = 0.05 * amp * math.sin(t)
+                elif name == "Root":
+                    loc_z = 0.03 * amp * abs(math.sin(t))
+
+            elif preset == "RUN":
+                if name == "LeftLeg":
+                    rx = 0.6 * amp * math.sin(t)
+                elif name == "RightLeg":
+                    rx = -0.6 * amp * math.sin(t)
+                elif name == "LeftArm":
+                    rx = -0.45 * amp * math.sin(t)
+                elif name == "RightArm":
+                    rx = 0.45 * amp * math.sin(t)
+                elif name in ("Spine", "Chest"):
+                    rx = 0.1 * amp
+                    rz = 0.08 * amp * math.sin(t)
+                elif name == "Root":
+                    loc_z = 0.08 * amp * abs(math.sin(t))
+
+            elif preset == "WAVE":
+                if name == "RightArm":
+                    rx = 1.1 * amp
+                    rz = 0.4 * amp
+                    ry = 0.35 * amp * math.sin(2.0 * t)
+                elif name in ("Chest", "Neck"):
+                    rz = 0.05 * amp * math.sin(t)
+
+            elif preset == "JUMP":
+                if progress < 0.2:  # Crouch
+                    c_phase = math.sin(math.pi * (progress / 0.2))
+                    if name in ("LeftLeg", "RightLeg"):
+                        rx = 0.3 * amp * c_phase
+                    elif name == "Spine":
+                        rx = -0.15 * amp * c_phase
+                    elif name == "Root":
+                        loc_z = -0.15 * amp * c_phase
+                elif progress < 0.7:  # Airborne
+                    a_phase = math.sin(math.pi * ((progress - 0.2) / 0.5))
+                    if name == "Root":
+                        loc_z = 0.4 * amp * a_phase
+                    elif name in ("LeftArm", "RightArm"):
+                        rx = -0.4 * amp * a_phase
+                    elif name in ("LeftLeg", "RightLeg"):
+                        rx = -0.1 * amp * a_phase
+                elif progress < 0.9:  # Landing
+                    l_phase = math.sin(math.pi * ((progress - 0.7) / 0.2))
+                    if name in ("LeftLeg", "RightLeg"):
+                        rx = 0.2 * amp * l_phase
+                    elif name == "Root":
+                        loc_z = -0.1 * amp * l_phase
+
+            q = mathutils.Euler((rx, ry, rz), 'XYZ').to_quaternion()
+            pb.rotation_quaternion = q
+            pb.keyframe_insert(data_path="rotation_quaternion", frame=f)
+
+            if loc_x != 0.0 or loc_y != 0.0 or loc_z != 0.0:
+                pb.location = (loc_x, loc_y, loc_z)
+                pb.keyframe_insert(data_path="location", frame=f)
+
+    fcurves_count = len(action.fcurves) if action else 0
+    keyframes_count = sum(len(fc.keyframe_points) for fc in action.fcurves) if action else 0
+    log(f"  Applied procedural animation '{preset}' to armature '{armature_obj.name}': Action '{action_name}' ({fcurves_count} F-curves, {keyframes_count} keyframes).")
+    return fcurves_count > 0
+
+
 def execute_graph(payload_json: str):
     data = json.loads(payload_json)
     steps = data.get("steps", [])
@@ -391,6 +524,32 @@ def execute_graph(payload_json: str):
             armature_objs = [o for o in bpy.data.objects if o.type == 'ARMATURE']
             mesh_objs = [o for o in bpy.data.objects if o.type == 'MESH']
             log(f"  Character validation check: Armatures={len(armature_objs)}, Meshes={len(mesh_objs)}")
+
+        # ---- CREATE_ANIMATION / APPLY_PROCEDURAL_ANIMATION / VALIDATE_ANIMATION ----
+        elif op_type in ("CREATE_ANIMATION", "APPLY_PROCEDURAL_ANIMATION"):
+            armature_ref = params.get("armature_name") or params.get("rig_name")
+            armature_obj = bpy.data.objects.get(armature_ref) if armature_ref else next((o for o in bpy.data.objects if o.type == 'ARMATURE'), None)
+
+            if not armature_obj:
+                armature_obj = create_humanoid_armature()
+
+            # Ensure mesh exists & skinned
+            mesh_objs = [o for o in bpy.data.objects if o.type == 'MESH']
+            if not mesh_objs:
+                bpy.ops.mesh.primitive_uv_sphere_add(radius=0.5, location=(0, 0, 1.5))
+                head_mesh = bpy.context.active_object
+                head_mesh.name = "Character_Mesh"
+                mesh_objs = [head_mesh]
+
+            for m in mesh_objs:
+                skin_mesh_to_armature(m, armature_obj)
+
+            apply_procedural_animation_to_armature(armature_obj, params)
+
+        elif op_type == "VALIDATE_ANIMATION":
+            armature_objs = [o for o in bpy.data.objects if o.type == 'ARMATURE']
+            has_action = any(o.animation_data and o.animation_data.action for o in armature_objs)
+            log(f"  Animation validation check: Armatures={len(armature_objs)}, HasAction={has_action}")
 
         # ---- EXPORT_GLB ----
         elif op_type == "EXPORT_GLB":

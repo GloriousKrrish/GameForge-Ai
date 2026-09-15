@@ -23,6 +23,7 @@ from app.models.domain import (
     Material, MaterialCreateRequest, MaterialUpdateRequest, AssignMaterialRequest,
     AssetGenerationRequest, InstantiateAssetRequest, AssetModel, CharacterCreateRequest,
     RigCharacterRequest, InstantiateCharacterRequest, AnimationCreateRequest, AnimationUpdateRequest,
+    GenerateAnimationRequest,
 )
 from app.providers.adapter import provider_adapter
 from app.services.asset_validator import AssetValidator, AssetNormalizer
@@ -189,6 +190,23 @@ async def get_animation(animation_id: str):
 async def update_animation(animation_id: str, req: AnimationUpdateRequest):
     try:
         return animation_manager.update_animation(animation_id, req)
+    except AnimationValidationError as exc:
+        status_code = 404 if "not found" in str(exc).lower() else 422
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@router.post("/animations/{animation_id}/generate")
+async def generate_animation(animation_id: str, req: Optional[GenerateAnimationRequest] = None):
+    motion_preset = req.motion_preset if req else None
+    speed = req.speed if req else 1.0
+    amplitude = req.amplitude if req else 1.0
+    try:
+        return animation_manager.generate_procedural_animation(
+            animation_id=animation_id,
+            motion_preset=motion_preset,
+            speed=speed,
+            amplitude=amplitude,
+        )
     except AnimationValidationError as exc:
         status_code = 404 if "not found" in str(exc).lower() else 422
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc

@@ -197,6 +197,89 @@ class AnimationManager:
             animation.duration_seconds, animation.fps, animation.frame_start, animation.frame_end
         )
 
+    def generate_procedural_animation(
+        self,
+        animation_id: str,
+        motion_preset: Optional[str] = None,
+        speed: float = 1.0,
+        amplitude: float = 1.0,
+    ) -> AnimationModel:
+        """Trigger controlled Blender procedural animation generation for an existing AnimationModel."""
+        anim = self.get_animation(animation_id)
+        if not anim:
+            raise AnimationValidationError(f"Animation '{animation_id}' not found.")
+
+        character = character_manager.get_character(anim.character_id)
+        if not character:
+            raise AnimationValidationError(f"Target character '{anim.character_id}' not found.")
+
+        self.validate_animation_relationship(anim, character)
+
+        preset = motion_preset or anim.animation_type.value if hasattr(anim.animation_type, "value") else str(anim.animation_type)
+        if preset not in ("IDLE", "WALK", "RUN", "WAVE", "JUMP"):
+            preset = "IDLE"
+
+        anim.status = AnimationStatus.GENERATING
+        self.save_animation(anim)
+
+        from pathlib import Path
+        from app.schemas.execution_graph import ExecutionGraph, ExecutionStep, OperationType
+        from app.execution.engine import ExecutionEngine
+
+        graph = ExecutionGraph(
+            id=f"graph_anim_{anim.id}",
+            steps=[
+                ExecutionStep(
+                    id="step_anim_1",
+                    type=OperationType.APPLY_PROCEDURAL_ANIMATION,
+                    parameters={
+                        "animation_id": anim.id,
+                        "character_id": character.id,
+                        "motion_preset": preset,
+                        "speed": speed,
+                        "amplitude": amplitude,
+                        "duration_seconds": anim.duration_seconds,
+                        "fps": anim.fps,
+                        "frame_start": anim.frame_start,
+                        "frame_end": anim.frame_end,
+                        "loop": anim.is_looping,
+                    },
+                ),
+                ExecutionStep(
+                    id="step_anim_2",
+                    type=OperationType.VALIDATE_ANIMATION,
+                    parameters={"animation_id": anim.id},
+                ),
+                ExecutionStep(
+                    id="step_anim_3",
+                    type=OperationType.EXPORT_GLB,
+                    parameters={},
+                ),
+            ],
+        )
+
+        engine = ExecutionEngine(exports_dir=Path("backend/public/exports"))
+        success, msg, glb_url = engine.execute(graph, job_id=f"anim_job_{anim.id}")
+
+        if success:
+            anim.status = AnimationStatus.READY
+            anim.glb_url = glb_url
+            anim.track_count = 9
+            anim.metadata["provider"] = "DETERMINISTIC_PROCEDURAL"
+            anim.metadata["motion_preset"] = preset
+            anim.metadata["speed"] = speed
+            anim.metadata["amplitude"] = amplitude
+            anim.metadata["blender_log"] = msg
+            self.save_animation(anim)
+            logger.info("Successfully generated Blender animation '%s' (%s) preset=%s", anim.name, anim.id, preset)
+            return anim
+        else:
+            anim.status = AnimationStatus.FAILED
+            anim.metadata["error"] = msg
+            self.save_animation(anim)
+            logger.error("Failed to generate Blender animation '%s' (%s): %s", anim.name, anim.id, msg)
+            raise AnimationValidationError(f"Blender animation generation failed: {msg}")
+
     @staticmethod
     def _validate_timing_bounds(duration: float, fps: int, frame_start: int, frame_end: int) -> None:
         """Validate numerical timing bounds and ordering."""

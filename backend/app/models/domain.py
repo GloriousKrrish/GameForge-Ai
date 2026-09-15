@@ -222,6 +222,12 @@ class AnimationUpdateRequest(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
 
 
+class GenerateAnimationRequest(BaseModel):
+    motion_preset: Optional[str] = None
+    speed: float = 1.0
+    amplitude: float = 1.0
+
+
 class Texture(BaseModel):
     id: str
     name: str
