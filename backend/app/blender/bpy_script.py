@@ -130,42 +130,42 @@ def apply_procedural_animation_to_armature(armature_obj, params):
     armature_obj.select_set(True)
     bpy.context.view_layer.objects.active = armature_obj
 
-        anim_id = params.get("animation_id", "anim_default")
-        preset = params.get("motion_preset") or params.get("animation_type") or "IDLE"
-        speed = float(params.get("speed", 1.0))
-        amp = float(params.get("amplitude", 1.0))
-        duration = float(params.get("duration_seconds", 2.0))
-        fps = int(params.get("fps", 30))
-        frame_start = int(params.get("frame_start", 1))
-        frame_end = int(params.get("frame_end", frame_start + int(duration * fps) - 1))
+    anim_id = params.get("animation_id", "anim_default")
+    preset = params.get("motion_preset") or params.get("animation_type") or "IDLE"
+    speed = float(params.get("speed", 1.0))
+    amp = float(params.get("amplitude", 1.0))
+    duration = float(params.get("duration_seconds", 2.0))
+    fps = int(params.get("fps", 30))
+    frame_start = int(params.get("frame_start", 1))
+    frame_end = int(params.get("frame_end", frame_start + int(duration * fps) - 1))
 
-        total_frames = max(2, frame_end - frame_start + 1)
-        bpy.context.scene.frame_start = frame_start
-        bpy.context.scene.frame_end = frame_end
-        bpy.context.scene.render.fps = fps
+    total_frames = max(2, frame_end - frame_start + 1)
+    bpy.context.scene.frame_start = frame_start
+    bpy.context.scene.frame_end = frame_end
+    bpy.context.scene.render.fps = fps
 
-        # Action setup
-        action_name = f"GameForge_Action_{preset}_{anim_id}"
-        try:
-            action = bpy.data.actions.new(name=action_name)
-        except Exception as exc:
-            log(f"  Warning creating action '{action_name}': {exc}")
-            action = None
+    # Action setup
+    action_name = f"GameForge_Action_{preset}_{anim_id}"
+    try:
+        action = bpy.data.actions.new(name=action_name)
+    except Exception as exc:
+        log(f"  Warning creating action '{action_name}': {exc}")
+        action = None
 
-        if not armature_obj.animation_data:
-            armature_obj.animation_data_create()
-        if action:
-            armature_obj.animation_data.action = action
+    if not armature_obj.animation_data:
+        armature_obj.animation_data_create()
+    if action:
+        armature_obj.animation_data.action = action
 
-        # Map pose bones
-        try:
-            bpy.ops.object.mode_set(mode='POSE')
-        except Exception as exc:
-            log(f"  Warning setting POSE mode: {exc}")
+    # Map pose bones
+    try:
+        bpy.ops.object.mode_set(mode='POSE')
+    except Exception as exc:
+        log(f"  Warning setting POSE mode: {exc}")
 
-        pose_bones = armature_obj.pose.bones
-        for pb in pose_bones:
-            pb.rotation_mode = 'QUATERNION'
+    pose_bones = armature_obj.pose.bones
+    for pb in pose_bones:
+        pb.rotation_mode = 'QUATERNION'
 
     for f in range(frame_start, frame_end + 1):
         bpy.context.scene.frame_set(f)
