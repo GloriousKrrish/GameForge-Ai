@@ -69,6 +69,22 @@ export class AnimationRuntimeManager {
   }
 
   /**
+   * Get all registered animation IDs for a character.
+   */
+  public getRegisteredAnimationIds(characterId: string): string[] {
+    const clipsMap = this.characterClips.get(characterId);
+    return clipsMap ? Array.from(clipsMap.keys()) : [];
+  }
+
+  /**
+   * Check if a specific animation clip is registered for a character.
+   */
+  public hasAnimationClip(characterId: string, animationId: string): boolean {
+    const clipsMap = this.characterClips.get(characterId);
+    return clipsMap ? clipsMap.has(animationId) : false;
+  }
+
+  /**
    * Register an AnimationClip with a character and return the created AnimationAction.
    */
   public registerAnimationClip(

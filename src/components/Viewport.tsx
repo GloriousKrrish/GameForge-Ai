@@ -5,6 +5,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { useGameForgeStore } from "@/store/useGameForgeStore";
 import { AnimationRuntimeManager } from "@/runtime/AnimationRuntimeManager";
+import { AnimationClipLoader } from "@/runtime/AnimationClipLoader";
 
 // ── Rig Bone Overlay Helpers ──────────────────────────────────────────────────
 
@@ -70,6 +71,7 @@ export function Viewport() {
   const rigOverlayRef = useRef<THREE.LineSegments | null>(null);
   const animationRuntimeRef = useRef<AnimationRuntimeManager>(new AnimationRuntimeManager());
   const clockRef = useRef<THREE.Clock>(new THREE.Clock());
+  const clipLoaderRef = useRef<AnimationClipLoader>(new AnimationClipLoader());
 
   // ── Rig overlay: add / remove when isRigVisualized or activeSkeleton changes ──
   useEffect(() => {
@@ -161,15 +163,16 @@ export function Viewport() {
           // Register loaded character root with runtime manager
           animationRuntimeRef.current.registerCharacter("active_model", model);
 
-          // If GLB contains animation clips (e.g. Phase 6B/6C exports), bind & play
+          // Phase 6D-B: Explicit clip discovery & binding via AnimationClipLoader
+          // If GLB contains animation clips, discover, validate, and bind them
+          // without auto-playing (playback UI is a later milestone).
           if (gltf.animations && gltf.animations.length > 0) {
-            const action = animationRuntimeRef.current.loadAnimationFromGLTF(
-              "active_model",
-              "default_anim",
-              gltf.animations
-            );
-            if (action) {
-              animationRuntimeRef.current.play("active_model", "default_anim");
+            for (let i = 0; i < gltf.animations.length; i++) {
+              const clip = gltf.animations[i];
+              if (clip && isFinite(clip.duration) && clip.duration > 0 && clip.tracks?.length > 0) {
+                const animId = clip.name || `clip_${i}`;
+                animationRuntimeRef.current.registerAnimationClip("active_model", animId, clip);
+              }
             }
           }
 
@@ -247,6 +250,7 @@ export function Viewport() {
     return () => {
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener("resize", handleResize);
+      clipLoaderRef.current.dispose();
       animationRuntimeRef.current.dispose();
       renderer.dispose();
       sceneRef.current = null;
