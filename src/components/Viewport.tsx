@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { useGameForgeStore } from "@/store/useGameForgeStore";
+import { AnimationRuntimeManager } from "@/runtime/AnimationRuntimeManager";
 
 // ── Rig Bone Overlay Helpers ──────────────────────────────────────────────────
 
@@ -67,6 +68,8 @@ export function Viewport() {
   const loadedModelRef = useRef<THREE.Group | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rigOverlayRef = useRef<THREE.LineSegments | null>(null);
+  const animationRuntimeRef = useRef<AnimationRuntimeManager>(new AnimationRuntimeManager());
+  const clockRef = useRef<THREE.Clock>(new THREE.Clock());
 
   // ── Rig overlay: add / remove when isRigVisualized or activeSkeleton changes ──
   useEffect(() => {
@@ -150,9 +153,25 @@ export function Viewport() {
         (gltf) => {
           if (loadedModelRef.current) {
             scene.remove(loadedModelRef.current);
+            animationRuntimeRef.current.unregisterCharacter("active_model");
           }
           const model = gltf.scene;
           loadedModelRef.current = model;
+
+          // Register loaded character root with runtime manager
+          animationRuntimeRef.current.registerCharacter("active_model", model);
+
+          // If GLB contains animation clips (e.g. Phase 6B/6C exports), bind & play
+          if (gltf.animations && gltf.animations.length > 0) {
+            const action = animationRuntimeRef.current.loadAnimationFromGLTF(
+              "active_model",
+              "default_anim",
+              gltf.animations
+            );
+            if (action) {
+              animationRuntimeRef.current.play("active_model", "default_anim");
+            }
+          }
 
           let meshCount = 0;
           let triCount = 0;
@@ -185,12 +204,18 @@ export function Viewport() {
       );
     } else {
       setObjectStats({ objects: 0, tris: 0 });
+      animationRuntimeRef.current.unregisterCharacter("active_model");
     }
 
     // 6. Animation Loop
     let animationFrameId: number;
+    clockRef.current.start();
+
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
+
+      const delta = clockRef.current.getDelta();
+      animationRuntimeRef.current.update(delta);
 
       if (loadedModelRef.current) {
         loadedModelRef.current.traverse((child) => {
@@ -222,6 +247,7 @@ export function Viewport() {
     return () => {
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener("resize", handleResize);
+      animationRuntimeRef.current.dispose();
       renderer.dispose();
       sceneRef.current = null;
     };
