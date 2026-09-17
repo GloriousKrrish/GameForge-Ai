@@ -4,6 +4,7 @@ import { Play, Pause, Square, Film, Loader2, AlertCircle, RefreshCw } from "luci
 import { useGameForgeStore } from "@/store/useGameForgeStore";
 import { listCharacterAnimations, type AnimationData } from "@/api/animations";
 import { animationRuntime, animationClipLoader } from "@/runtime/animationRuntime";
+import { AnimationTimeline } from "./AnimationTimeline";
 
 export function AnimationPlaybackControls() {
   const {
@@ -281,6 +282,15 @@ export function AnimationPlaybackControls() {
           Stop
         </button>
       </div>
+
+      {/* Phase 6D-D Professional Animation Timeline & Scrubbing Bar */}
+      <AnimationTimeline
+        characterId={characterId || ""}
+        activeAnimationId={activeAnimationId}
+        duration={selectedAnimData?.duration_seconds || (characterId ? animationRuntime.getDuration(characterId) : 0)}
+        fps={selectedAnimData?.fps || 30}
+        disabled={!activeAnimationId || isAnimationLoading}
+      />
 
       {/* Playback Speed Selector */}
       <div className="space-y-1">
