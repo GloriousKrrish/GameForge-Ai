@@ -3,7 +3,7 @@ import { User, Bone, Activity, CheckCircle2, Loader2 } from "lucide-react";
 import { useGameForgeStore } from "@/store/useGameForgeStore";
 import { updateObjectTransform, updateSceneObject, parentSceneObject, unparentSceneObject } from "@/api/scene";
 import { rigCharacter } from "@/api/characters";
-import { AnimationPlaybackControls } from "@/components/AnimationPlaybackControls";
+import { CharacterAnimationInspector } from "@/components/CharacterAnimationInspector";
 
 export function PropertiesPanel() {
   const {
@@ -360,110 +360,8 @@ export function PropertiesPanel() {
         </div>
       </section>
 
-      {/* ---- Character Inspector (Phase 5) ---- */}
-      {selectedCharacter && (
-        <section className="space-y-3 border-t border-border pt-3">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-gold-soft">Character Inspector</p>
-
-          {/* Character Name + Status */}
-          <div className="rounded-lg border border-gold/20 bg-gold/5 p-2.5 flex flex-col gap-1.5">
-            <div className="flex items-center gap-2">
-              <User className="size-4 text-gold shrink-0" />
-              <span className="font-semibold text-xs text-foreground truncate">{selectedCharacter.name}</span>
-            </div>
-            <span className="font-mono text-[10px] text-muted-foreground truncate">{selectedCharacter.id}</span>
-
-            {/* Status Badge */}
-            <div className="flex items-center gap-1.5 mt-0.5">
-              {selectedCharacter.status === "READY" ? (
-                <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-400 border border-emerald-500/30">
-                  <CheckCircle2 className="size-3" /> READY · Animation-Ready
-                </span>
-              ) : selectedCharacter.status === "RIGGED" ? (
-                <span className="inline-flex items-center gap-1 rounded bg-blue-500/15 px-2 py-0.5 text-[10px] font-semibold text-blue-400 border border-blue-500/30">
-                  <Bone className="size-3" /> RIGGED · Deterministic
-                </span>
-              ) : selectedCharacter.status === "RIGGING" || isRigging ? (
-                <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-400 border border-amber-500/30 animate-pulse">
-                  <Loader2 className="size-3 animate-spin" /> RIGGING…
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 rounded bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                  {selectedCharacter.status}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Character Meta Fields */}
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
-            <div className="rounded-md border border-border bg-secondary/40 px-2 py-1.5">
-              <span className="block text-[10px] text-muted-foreground mb-0.5">Type</span>
-              <span className="font-semibold text-foreground">{selectedCharacter.character_type}</span>
-            </div>
-            <div className="rounded-md border border-border bg-secondary/40 px-2 py-1.5">
-              <span className="block text-[10px] text-muted-foreground mb-0.5">Rig ID</span>
-              <span className="font-mono text-[10px] text-gold-soft truncate block">
-                {selectedCharacter.rig_id ?? "—"}
-              </span>
-            </div>
-            {selectedCharacter.skinning && (
-              <>
-                <div className="rounded-md border border-border bg-secondary/40 px-2 py-1.5">
-                  <span className="block text-[10px] text-muted-foreground mb-0.5">Vertices</span>
-                  <span className="font-semibold text-foreground">{selectedCharacter.skinning.vertex_count}</span>
-                </div>
-                <div className="rounded-md border border-border bg-secondary/40 px-2 py-1.5">
-                  <span className="block text-[10px] text-muted-foreground mb-0.5">Max Infl.</span>
-                  <span className="font-semibold text-foreground">{selectedCharacter.skinning.max_influences_per_vertex}</span>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Skinning Status */}
-          {selectedCharacter.skinning && (
-            <div className="flex items-center justify-between rounded-md border border-border bg-secondary/30 px-2.5 py-1.5 text-[11px]">
-              <span className="text-muted-foreground">Skinning Status</span>
-              <span className={`font-semibold ${
-                selectedCharacter.skinning.status === "VALID" ? "text-emerald-400"
-                : selectedCharacter.skinning.status === "NOT_AVAILABLE" ? "text-amber-400"
-                : "text-red-400"
-              }`}>
-                {selectedCharacter.skinning.status}
-              </span>
-            </div>
-          )}
-
-          {/* Character Actions */}
-          <div className="flex gap-1.5">
-            <button
-              onClick={handleRigCharacter}
-              disabled={isRigging || selectedCharacter.status === "RIGGING"}
-              id="btn-rig-character-props"
-              className="flex-1 flex items-center justify-center gap-1.5 rounded-md bg-gold px-3 py-1.5 text-[11px] font-semibold text-background hover:bg-gold/90 disabled:opacity-50 transition-colors"
-            >
-              {isRigging ? <Loader2 className="size-3.5 animate-spin" /> : <Bone className="size-3.5" />}
-              {isRigging ? "Rigging…" : "Rig Character"}
-            </button>
-            <button
-              onClick={() => setIsRigVisualized(!isRigVisualized)}
-              id="btn-toggle-rig-vis"
-              className={`flex items-center justify-center gap-1 rounded-md border px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
-                isRigVisualized
-                  ? "border-gold/40 bg-gold/10 text-gold"
-                  : "border-border bg-secondary text-foreground hover:border-gold/30"
-              }`}
-              title={isRigVisualized ? "Hide Rig Overlay" : "Show Rig Overlay"}
-            >
-              <Activity className="size-3.5" />
-            </button>
-          </div>
-
-          {/* Phase 6D-C Animation Playback Controls */}
-          <AnimationPlaybackControls />
-        </section>
-      )}
+      {/* ---- Character Animation Inspector (Phase 6D-E) ---- */}
+      <CharacterAnimationInspector />
     </aside>
   );
 }
