@@ -40,6 +40,13 @@ interface GameForgeState {
   isRigVisualized: boolean;
   selectedBoneId: string | null;
 
+  activeAnimationId: string | null;
+  isPlaying: boolean;
+  playbackSpeed: number;
+  loopMode: "LOOP" | "ONCE";
+  isAnimationLoading: boolean;
+  animationError: string | null;
+
   setSelectedObjectId: (id: string | null) => void;
   setActiveSceneData: (data: any) => void;
   setMaterialsList: (materials: any[]) => void;
@@ -49,6 +56,12 @@ interface GameForgeState {
   setActiveSkeleton: (skeleton: any | null) => void;
   setIsRigVisualized: (visualized: boolean) => void;
   setSelectedBoneId: (boneId: string | null) => void;
+  setActiveAnimationId: (id: string | null) => void;
+  setIsPlaying: (playing: boolean) => void;
+  setPlaybackSpeed: (speed: number) => void;
+  setLoopMode: (mode: "LOOP" | "ONCE") => void;
+  setIsAnimationLoading: (loading: boolean) => void;
+  setAnimationError: (error: string | null) => void;
   setSelectedObject: (obj: {
     name: string;
     position: [number, number, number];
@@ -94,6 +107,13 @@ export const useGameForgeStore = create<GameForgeState>((set) => ({
   isRigVisualized: false,
   selectedBoneId: null,
 
+  activeAnimationId: null,
+  isPlaying: false,
+  playbackSpeed: 1.0,
+  loopMode: "LOOP",
+  isAnimationLoading: false,
+  animationError: null,
+
   setMaterialsList: (materialsList) => set({ materialsList }),
   setAssetsList: (assetsList) => set({ assetsList }),
   setCharactersList: (charactersList) => set({ charactersList }),
@@ -101,6 +121,12 @@ export const useGameForgeStore = create<GameForgeState>((set) => ({
   setActiveSkeleton: (activeSkeleton) => set({ activeSkeleton }),
   setIsRigVisualized: (isRigVisualized) => set({ isRigVisualized }),
   setSelectedBoneId: (selectedBoneId) => set({ selectedBoneId }),
+  setActiveAnimationId: (activeAnimationId) => set({ activeAnimationId }),
+  setIsPlaying: (isPlaying) => set({ isPlaying }),
+  setPlaybackSpeed: (playbackSpeed) => set({ playbackSpeed }),
+  setLoopMode: (loopMode) => set({ loopMode }),
+  setIsAnimationLoading: (isAnimationLoading) => set({ isAnimationLoading }),
+  setAnimationError: (animationError) => set({ animationError }),
 
   selectedObject: {
     name: "GameForge_Cube",

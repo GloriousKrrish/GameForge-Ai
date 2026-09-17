@@ -312,6 +312,37 @@ export class AnimationClipLoader {
     }
   }
 
+  /**
+   * Convenience wrapper to load and bind an animation clip given an AnimationData record.
+   */
+  public async loadAndBindClip(
+    characterId: string,
+    animData: { id: string; character_id: string; glb_url?: string | null; name?: string },
+    runtimeManager: AnimationRuntimeManager
+  ): Promise<AnimationLoadResult> {
+    const glbUrl = animData.glb_url || `/exports/${animData.id}.glb`;
+    return this.loadAndBind(
+      runtimeManager,
+      characterId,
+      animData.id,
+      glbUrl,
+      animData.character_id,
+      animData.name
+    );
+  }
+
+  /**
+   * Direct clip binding helper for runtime instances and test mocks.
+   */
+  public bindClipToCharacter(
+    characterId: string,
+    clip: THREE.AnimationClip,
+    runtimeManager: AnimationRuntimeManager,
+    animationId = "custom_clip"
+  ): THREE.AnimationAction {
+    return runtimeManager.registerAnimationClip(characterId, animationId, clip);
+  }
+
   // ── Query ────────────────────────────────────────────────────────────────
 
   /** Get discovered clips for an already-loaded animation. */

@@ -4,8 +4,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { useGameForgeStore } from "@/store/useGameForgeStore";
-import { AnimationRuntimeManager } from "@/runtime/AnimationRuntimeManager";
-import { AnimationClipLoader } from "@/runtime/AnimationClipLoader";
+import { animationRuntime, animationClipLoader } from "@/runtime/animationRuntime";
 
 // ── Rig Bone Overlay Helpers ──────────────────────────────────────────────────
 
@@ -61,6 +60,7 @@ export function Viewport() {
   const objectStats = useGameForgeStore((s) => s.objectStats);
   const setObjectStats = useGameForgeStore((s) => s.setObjectStats);
   const errorMessage = useGameForgeStore((s) => s.errorMessage);
+  const selectedCharacter = useGameForgeStore((s) => s.selectedCharacter);
   const activeSkeleton = useGameForgeStore((s) => s.activeSkeleton);
   const isRigVisualized = useGameForgeStore((s) => s.isRigVisualized);
   const setIsRigVisualized = useGameForgeStore((s) => s.setIsRigVisualized);
@@ -69,9 +69,15 @@ export function Viewport() {
   const loadedModelRef = useRef<THREE.Group | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rigOverlayRef = useRef<THREE.LineSegments | null>(null);
-  const animationRuntimeRef = useRef<AnimationRuntimeManager>(new AnimationRuntimeManager());
   const clockRef = useRef<THREE.Clock>(new THREE.Clock());
-  const clipLoaderRef = useRef<AnimationClipLoader>(new AnimationClipLoader());
+
+  // Ensure character root is registered under selectedCharacter.id when selectedCharacter changes
+  useEffect(() => {
+    if (loadedModelRef.current) {
+      const charId = selectedCharacter?.id || "active_model";
+      animationRuntime.registerCharacter(charId, loadedModelRef.current);
+    }
+  }, [selectedCharacter]);
 
   // ── Rig overlay: add / remove when isRigVisualized or activeSkeleton changes ──
   useEffect(() => {
@@ -98,7 +104,6 @@ export function Viewport() {
 
     // 1. Setup Scene, Camera, Renderer
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0a0c10);
     sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(
@@ -107,9 +112,9 @@ export function Viewport() {
       0.1,
       1000
     );
-    camera.position.set(4, 3, 5);
+    camera.position.set(3, 3, 5);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
@@ -120,33 +125,35 @@ export function Viewport() {
     }
     container.appendChild(renderer.domElement);
 
-    // 2. Add OrbitControls
+    // 2. Controls
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controlsRef.current = controls;
 
-    // 3. Add Lighting
+    // 3. Lighting
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
     scene.add(ambientLight);
 
-    const dirLight1 = new THREE.DirectionalLight(0xfff5e6, 1.2);
-    dirLight1.position.set(5, 10, 7);
-    scene.add(dirLight1);
+    const dirLight = new THREE.DirectionalLight(0xfff5e6, 1.2);
+    dirLight.position.set(5, 8, 5);
+    dirLight.castShadow = true;
+    scene.add(dirLight);
 
-    const dirLight2 = new THREE.DirectionalLight(0x4080ff, 0.4);
-    dirLight2.position.set(-5, -2, -5);
-    scene.add(dirLight2);
+    const fillLight = new THREE.DirectionalLight(0x88b04b, 0.4);
+    fillLight.position.set(-5, 2, -5);
+    scene.add(fillLight);
 
-    // 4. Add Grid Helper
-    const gridHelper = new THREE.GridHelper(10, 10, 0x4a3b2c, 0x1f2937);
-    gridHelper.position.y = -0.01;
-    scene.add(gridHelper);
+    // 4. Grid Floor
+    const grid = new THREE.GridHelper(10, 20, 0xd4a853, 0x22222b);
+    (grid.material as THREE.Material).opacity = 0.4;
+    (grid.material as THREE.Material).transparent = true;
+    scene.add(grid);
 
-    // 5. Load GLB Asset if available
+    // 5. Asset Loading
     if (activeAssetUrl) {
       const loader = new GLTFLoader();
-      const targetUrl = activeAssetUrl.startsWith("http")
+      const targetUrl = activeAssetUrl.startsWith("http") || activeAssetUrl.startsWith("blob:")
         ? activeAssetUrl
         : `http://localhost:8000${activeAssetUrl}`;
 
@@ -155,23 +162,31 @@ export function Viewport() {
         (gltf) => {
           if (loadedModelRef.current) {
             scene.remove(loadedModelRef.current);
-            animationRuntimeRef.current.unregisterCharacter("active_model");
+            animationRuntime.unregisterCharacter("active_model");
+            if (selectedCharacter?.id) {
+              animationRuntime.unregisterCharacter(selectedCharacter.id);
+            }
           }
           const model = gltf.scene;
           loadedModelRef.current = model;
 
           // Register loaded character root with runtime manager
-          animationRuntimeRef.current.registerCharacter("active_model", model);
+          const charId = selectedCharacter?.id || "active_model";
+          animationRuntime.registerCharacter(charId, model);
+          if (charId !== "active_model") {
+            animationRuntime.registerCharacter("active_model", model);
+          }
 
-          // Phase 6D-B: Explicit clip discovery & binding via AnimationClipLoader
-          // If GLB contains animation clips, discover, validate, and bind them
-          // without auto-playing (playback UI is a later milestone).
+          // Discover and register GLB animations
           if (gltf.animations && gltf.animations.length > 0) {
             for (let i = 0; i < gltf.animations.length; i++) {
               const clip = gltf.animations[i];
               if (clip && isFinite(clip.duration) && clip.duration > 0 && clip.tracks?.length > 0) {
                 const animId = clip.name || `clip_${i}`;
-                animationRuntimeRef.current.registerAnimationClip("active_model", animId, clip);
+                animationRuntime.registerAnimationClip(charId, animId, clip);
+                if (charId !== "active_model") {
+                  animationRuntime.registerAnimationClip("active_model", animId, clip);
+                }
               }
             }
           }
@@ -207,7 +222,10 @@ export function Viewport() {
       );
     } else {
       setObjectStats({ objects: 0, tris: 0 });
-      animationRuntimeRef.current.unregisterCharacter("active_model");
+      animationRuntime.unregisterCharacter("active_model");
+      if (selectedCharacter?.id) {
+        animationRuntime.unregisterCharacter(selectedCharacter.id);
+      }
     }
 
     // 6. Animation Loop
@@ -218,7 +236,7 @@ export function Viewport() {
       animationFrameId = requestAnimationFrame(animate);
 
       const delta = clockRef.current.getDelta();
-      animationRuntimeRef.current.update(delta);
+      animationRuntime.update(delta);
 
       if (loadedModelRef.current) {
         loadedModelRef.current.traverse((child) => {
@@ -250,12 +268,14 @@ export function Viewport() {
     return () => {
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener("resize", handleResize);
-      clipLoaderRef.current.dispose();
-      animationRuntimeRef.current.dispose();
+      animationRuntime.unregisterCharacter("active_model");
+      if (selectedCharacter?.id) {
+        animationRuntime.unregisterCharacter(selectedCharacter.id);
+      }
       renderer.dispose();
       sceneRef.current = null;
     };
-  }, [activeAssetUrl, mode, setObjectStats]);
+  }, [activeAssetUrl, mode, setObjectStats, selectedCharacter]);
 
   const handleResetCamera = () => {
     if (controlsRef.current) {

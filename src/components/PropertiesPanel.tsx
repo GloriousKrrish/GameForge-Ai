@@ -3,6 +3,7 @@ import { User, Bone, Activity, CheckCircle2, Loader2 } from "lucide-react";
 import { useGameForgeStore } from "@/store/useGameForgeStore";
 import { updateObjectTransform, updateSceneObject, parentSceneObject, unparentSceneObject } from "@/api/scene";
 import { rigCharacter } from "@/api/characters";
+import { AnimationPlaybackControls } from "@/components/AnimationPlaybackControls";
 
 export function PropertiesPanel() {
   const {
@@ -458,6 +459,9 @@ export function PropertiesPanel() {
               <Activity className="size-3.5" />
             </button>
           </div>
+
+          {/* Phase 6D-C Animation Playback Controls */}
+          <AnimationPlaybackControls />
         </section>
       )}
     </aside>

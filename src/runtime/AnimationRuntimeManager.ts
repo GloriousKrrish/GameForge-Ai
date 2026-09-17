@@ -14,6 +14,7 @@ export class AnimationRuntimeManager {
   private characterClips: Map<string, Map<string, THREE.AnimationClip>> = new Map();
   private activeActions: Map<string, THREE.AnimationAction> = new Map();
   private activeAnimationIds: Map<string, string> = new Map();
+  private finishedListeners: Map<string, Set<() => void>> = new Map();
 
   /**
    * Register a character Object3D root and create a dedicated THREE.AnimationMixer.
@@ -28,6 +29,14 @@ export class AnimationRuntimeManager {
     this.characterRoots.set(characterId, rootObject);
     this.characterActions.set(characterId, new Map());
     this.characterClips.set(characterId, new Map());
+    this.finishedListeners.set(characterId, new Set());
+
+    mixer.addEventListener("finished", () => {
+      const listeners = this.finishedListeners.get(characterId);
+      if (listeners) {
+        listeners.forEach((cb) => cb());
+      }
+    });
 
     return mixer;
   }
@@ -58,6 +67,26 @@ export class AnimationRuntimeManager {
     this.characterClips.delete(characterId);
     this.activeActions.delete(characterId);
     this.activeAnimationIds.delete(characterId);
+    this.finishedListeners.delete(characterId);
+  }
+
+  /**
+   * Register a listener callback to be called when an animation finishes playing (e.g. LoopOnce).
+   */
+  public onFinished(characterId: string, callback: () => void): () => void {
+    let listeners = this.finishedListeners.get(characterId);
+    if (!listeners) {
+      listeners = new Set();
+      this.finishedListeners.set(characterId, listeners);
+    }
+    listeners.add(callback);
+
+    return () => {
+      const current = this.finishedListeners.get(characterId);
+      if (current) {
+        current.delete(callback);
+      }
+    };
   }
 
   public hasCharacter(characterId: string): boolean {
